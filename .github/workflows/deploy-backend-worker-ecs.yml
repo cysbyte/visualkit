@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - "backend/**"
-      - "infrastructure/terraform/**"
       - ".github/workflows/deploy-backend-worker-ecs.yml"
   workflow_dispatch:
     inputs:
@@ -33,8 +32,37 @@ env:
   AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
   PROJECT_NAME: ${{ vars.PROJECT_NAME || 'visualkit' }}
   ENVIRONMENT: ${{ github.event.inputs.environment || vars.DEPLOY_ENVIRONMENT || 'staging' }}
-  TFVARS_FILE: infrastructure/terraform/${{ github.event.inputs.environment || vars.DEPLOY_ENVIRONMENT || 'staging' }}.tfvars
-  BACKEND_CONFIG: infrastructure/terraform/backend-${{ github.event.inputs.environment || vars.DEPLOY_ENVIRONMENT || 'staging' }}.hcl
+  ECS_CLUSTER: ${{ vars.ECS_CLUSTER || 'my-cluster' }}
+  ECS_SUBNETS: ${{ vars.ECS_SUBNETS || 'subnet-00d486ccc47c106c3,subnet-049030ce471097336,subnet-09957911ba06c489f,subnet-0207cfb1b59d111c0,subnet-059002c34faa60a13,subnet-0b38a6af4a720b169' }}
+  ECS_SECURITY_GROUPS: ${{ vars.ECS_SECURITY_GROUPS || 'sg-0621dd1b1173bd1c0' }}
+  ECS_ASSIGN_PUBLIC_IP: ${{ vars.ECS_ASSIGN_PUBLIC_IP || 'ENABLED' }}
+  ECS_EXECUTION_ROLE_ARN: ${{ vars.ECS_EXECUTION_ROLE_ARN || 'arn:aws:iam::450876624497:role/ecsTaskExecutionRole' }}
+  ECS_TASK_ROLE_ARN: ${{ vars.ECS_TASK_ROLE_ARN }}
+  API_SERVICE: ${{ vars.API_SERVICE || 'visualkit-staging-api' }}
+  WORKER_SERVICE: ${{ vars.WORKER_SERVICE || 'visualkit-staging-worker' }}
+  API_TASK_FAMILY: ${{ vars.API_TASK_FAMILY || 'visualkit-staging-api' }}
+  WORKER_TASK_FAMILY: ${{ vars.WORKER_TASK_FAMILY || 'visualkit-staging-worker' }}
+  API_DESIRED_COUNT: ${{ vars.API_DESIRED_COUNT || '1' }}
+  WORKER_DESIRED_COUNT: ${{ vars.WORKER_DESIRED_COUNT || '1' }}
+  API_CPU: ${{ vars.API_CPU || '512' }}
+  API_MEMORY: ${{ vars.API_MEMORY || '1024' }}
+  WORKER_CPU: ${{ vars.WORKER_CPU || '1024' }}
+  WORKER_MEMORY: ${{ vars.WORKER_MEMORY || '2048' }}
+  AUTH_MODE: ${{ vars.AUTH_MODE || 'bearer' }}
+  S3_BUCKET: ${{ vars.S3_BUCKET }}
+  SQS_QUEUE_URL: ${{ vars.SQS_QUEUE_URL }}
+  VISION_PROVIDER: ${{ vars.VISION_PROVIDER || 'mock' }}
+  VISION_ENDPOINT: ${{ vars.VISION_ENDPOINT }}
+  IMAGE_GENERATION_PROVIDER: ${{ vars.IMAGE_GENERATION_PROVIDER || 'mock' }}
+  IMAGE_GENERATION_ENDPOINT: ${{ vars.IMAGE_GENERATION_ENDPOINT }}
+  GENERATION_CREDIT_COST: ${{ vars.GENERATION_CREDIT_COST || '80' }}
+  WORKER_CONCURRENCY: ${{ vars.WORKER_CONCURRENCY || '4' }}
+  WORKER_PROVIDER_TIMEOUT: ${{ vars.WORKER_PROVIDER_TIMEOUT || '2m' }}
+  WORKER_MAX_ATTEMPTS: ${{ vars.WORKER_MAX_ATTEMPTS || '3' }}
+  DATABASE_URL_SECRET_ARN: ${{ vars.DATABASE_URL_SECRET_ARN }}
+  VISION_API_KEY_SECRET_ARN: ${{ vars.VISION_API_KEY_SECRET_ARN }}
+  IMAGE_GENERATION_API_KEY_SECRET_ARN: ${{ vars.IMAGE_GENERATION_API_KEY_SECRET_ARN }}
+  INTERNAL_JOB_TOKEN_SECRET_ARN: ${{ vars.INTERNAL_JOB_TOKEN_SECRET_ARN }}
 
 jobs:
   deploy:
@@ -49,30 +77,23 @@ jobs:
       - name: Validate deployment variables
         env:
           ROLE_ARN: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE_ARN }}
+          DATABASE_URL_FROM_GITHUB: ${{ secrets.DATABASE_URL }}
         run: |
           test -n "$AWS_REGION" || { echo "Missing repository variable AWS_REGION"; exit 1; }
           test -n "$AWS_ACCOUNT_ID" || { echo "Missing repository variable AWS_ACCOUNT_ID"; exit 1; }
           test -n "$ROLE_ARN" || { echo "Missing repository secret AWS_GITHUB_ACTIONS_ROLE_ARN"; exit 1; }
+          test -n "$ECS_CLUSTER" || { echo "Missing ECS_CLUSTER"; exit 1; }
+          test -n "$ECS_SUBNETS" || { echo "Missing ECS_SUBNETS"; exit 1; }
+          test -n "$ECS_SECURITY_GROUPS" || { echo "Missing ECS_SECURITY_GROUPS"; exit 1; }
+          test -n "$ECS_EXECUTION_ROLE_ARN" || { echo "Missing ECS_EXECUTION_ROLE_ARN"; exit 1; }
+          if [ -z "$DATABASE_URL_SECRET_ARN" ] && [ -z "$DATABASE_URL_FROM_GITHUB" ]; then
+            echo "Missing DATABASE_URL_SECRET_ARN repository variable or DATABASE_URL repository secret" >&2
+            exit 1
+          fi
           case "$ENVIRONMENT" in
             development|staging|production) ;;
             *) echo "ENVIRONMENT must be development, staging, or production"; exit 1 ;;
           esac
-
-      - name: Materialize Terraform config from secrets
-        env:
-          TFVARS_CONTENT: ${{ secrets.TERRAFORM_TFVARS }}
-          BACKEND_CONFIG_CONTENT: ${{ secrets.TERRAFORM_BACKEND_CONFIG }}
-        run: |
-          if [ ! -f "$TFVARS_FILE" ] && [ -n "$TFVARS_CONTENT" ]; then
-            printf '%s\n' "$TFVARS_CONTENT" > "$TFVARS_FILE"
-          fi
-
-          if [ ! -f "$BACKEND_CONFIG" ] && [ -n "$BACKEND_CONFIG_CONTENT" ]; then
-            printf '%s\n' "$BACKEND_CONFIG_CONTENT" > "$BACKEND_CONFIG"
-          fi
-
-          test -f "$TFVARS_FILE" || { echo "Missing $TFVARS_FILE or TERRAFORM_TFVARS secret"; exit 1; }
-          test -f "$BACKEND_CONFIG" || { echo "Missing $BACKEND_CONFIG or TERRAFORM_BACKEND_CONFIG secret"; exit 1; }
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -92,6 +113,66 @@ jobs:
           role-skip-session-tagging: true
           role-session-name: github-actions-visualkit-${{ github.run_id }}
 
+      - name: Verify AWS account
+        run: |
+          actual_account="$(aws sts get-caller-identity --query Account --output text)"
+          test "$actual_account" = "$AWS_ACCOUNT_ID" || {
+            echo "AWS account mismatch: got $actual_account, expected $AWS_ACCOUNT_ID" >&2
+            exit 1
+          }
+
+      - name: Resolve runtime secrets
+        env:
+          DATABASE_URL_FROM_GITHUB: ${{ secrets.DATABASE_URL }}
+          VISION_API_KEY_FROM_GITHUB: ${{ secrets.VISION_API_KEY }}
+          IMAGE_GENERATION_API_KEY_FROM_GITHUB: ${{ secrets.IMAGE_GENERATION_API_KEY }}
+          INTERNAL_JOB_TOKEN_FROM_GITHUB: ${{ secrets.INTERNAL_JOB_TOKEN }}
+        run: |
+          put_secret() {
+            local name="$1"
+            local value="$2"
+            local arn
+
+            if aws secretsmanager describe-secret --region "$AWS_REGION" --secret-id "$name" >/dev/null 2>&1; then
+              aws secretsmanager put-secret-value \
+                --region "$AWS_REGION" \
+                --secret-id "$name" \
+                --secret-string "$value" >/dev/null
+            else
+              aws secretsmanager create-secret \
+                --region "$AWS_REGION" \
+                --name "$name" \
+                --secret-string "$value" >/dev/null
+            fi
+
+            arn="$(aws secretsmanager describe-secret \
+              --region "$AWS_REGION" \
+              --secret-id "$name" \
+              --query ARN \
+              --output text)"
+            printf '%s' "$arn"
+          }
+
+          if [ -z "$DATABASE_URL_SECRET_ARN" ]; then
+            DATABASE_URL_SECRET_ARN="$(put_secret "$PROJECT_NAME/$ENVIRONMENT/database-url" "$DATABASE_URL_FROM_GITHUB")"
+            echo "DATABASE_URL_SECRET_ARN=$DATABASE_URL_SECRET_ARN" >> "$GITHUB_ENV"
+          fi
+
+          if [ -z "$VISION_API_KEY_SECRET_ARN" ] && [ -n "$VISION_API_KEY_FROM_GITHUB" ]; then
+            VISION_API_KEY_SECRET_ARN="$(put_secret "$PROJECT_NAME/$ENVIRONMENT/vision-api-key" "$VISION_API_KEY_FROM_GITHUB")"
+            echo "VISION_API_KEY_SECRET_ARN=$VISION_API_KEY_SECRET_ARN" >> "$GITHUB_ENV"
+          fi
+
+          if [ -z "$IMAGE_GENERATION_API_KEY_SECRET_ARN" ] && [ -n "$IMAGE_GENERATION_API_KEY_FROM_GITHUB" ]; then
+            IMAGE_GENERATION_API_KEY_SECRET_ARN="$(put_secret "$PROJECT_NAME/$ENVIRONMENT/image-generation-api-key" "$IMAGE_GENERATION_API_KEY_FROM_GITHUB")"
+            echo "IMAGE_GENERATION_API_KEY_SECRET_ARN=$IMAGE_GENERATION_API_KEY_SECRET_ARN" >> "$GITHUB_ENV"
+          fi
+
+          if [ -z "$INTERNAL_JOB_TOKEN_SECRET_ARN" ] && [ -n "$INTERNAL_JOB_TOKEN_FROM_GITHUB" ]; then
+            INTERNAL_JOB_TOKEN_SECRET_ARN="$(put_secret "$PROJECT_NAME/$ENVIRONMENT/internal-job-token" "$INTERNAL_JOB_TOKEN_FROM_GITHUB")"
+            echo "INTERNAL_JOB_TOKEN_SECRET_ARN=$INTERNAL_JOB_TOKEN_SECRET_ARN" >> "$GITHUB_ENV"
+          fi
+
       - name: Log in to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
@@ -104,11 +185,17 @@ jobs:
           echo "API_IMAGE=${ecr_prefix}/api:${image_tag}" >> "$GITHUB_ENV"
           echo "WORKER_IMAGE=${ecr_prefix}/worker:${image_tag}" >> "$GITHUB_ENV"
 
-      - name: Verify ECR repositories
+      - name: Ensure ECR repositories
         run: |
-          aws ecr describe-repositories \
-            --region "$AWS_REGION" \
-            --repository-names "${PROJECT_NAME}-${ENVIRONMENT}/api" "${PROJECT_NAME}-${ENVIRONMENT}/worker" >/dev/null
+          for repository in "${PROJECT_NAME}-${ENVIRONMENT}/api" "${PROJECT_NAME}-${ENVIRONMENT}/worker"; do
+            if ! aws ecr describe-repositories --region "$AWS_REGION" --repository-names "$repository" >/dev/null 2>&1; then
+              aws ecr create-repository \
+                --region "$AWS_REGION" \
+                --repository-name "$repository" \
+                --image-tag-mutability IMMUTABLE \
+                --image-scanning-configuration scanOnPush=true >/dev/null
+            fi
+          done
 
       - name: Build API image
         run: |
@@ -129,41 +216,173 @@ jobs:
           docker push "$API_IMAGE"
           docker push "$WORKER_IMAGE"
 
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Terraform init
+      - name: Deploy API and worker services
         run: |
-          terraform -chdir=infrastructure/terraform init \
-            -backend-config="$GITHUB_WORKSPACE/$BACKEND_CONFIG"
+          set -euo pipefail
 
-      - name: Import existing ECR repositories
-        run: |
-          if ! terraform -chdir=infrastructure/terraform state show aws_ecr_repository.api >/dev/null 2>&1; then
-            terraform -chdir=infrastructure/terraform import \
-              -var-file="$GITHUB_WORKSPACE/$TFVARS_FILE" \
-              -var="aws_region=$AWS_REGION" \
-              -var="container_image_api=$API_IMAGE" \
-              -var="container_image_worker=$WORKER_IMAGE" \
-              aws_ecr_repository.api \
-              "${PROJECT_NAME}-${ENVIRONMENT}/api"
-          fi
+          ensure_log_group() {
+            local log_group="$1"
+            if ! aws logs describe-log-groups \
+              --region "$AWS_REGION" \
+              --log-group-name-prefix "$log_group" \
+              --query "logGroups[?logGroupName=='$log_group'].logGroupName" \
+              --output text | grep -qx "$log_group"; then
+              aws logs create-log-group --region "$AWS_REGION" --log-group-name "$log_group"
+            fi
+          }
 
-          if ! terraform -chdir=infrastructure/terraform state show aws_ecr_repository.worker >/dev/null 2>&1; then
-            terraform -chdir=infrastructure/terraform import \
-              -var-file="$GITHUB_WORKSPACE/$TFVARS_FILE" \
-              -var="aws_region=$AWS_REGION" \
-              -var="container_image_api=$API_IMAGE" \
-              -var="container_image_worker=$WORKER_IMAGE" \
-              aws_ecr_repository.worker \
-              "${PROJECT_NAME}-${ENVIRONMENT}/worker"
-          fi
+          register_task_definition() {
+            local family="$1"
+            local container_name="$2"
+            local image="$3"
+            local cpu="$4"
+            local memory="$5"
+            local log_group="$6"
+            local output_file="$7"
 
-      - name: Terraform apply
-        run: |
-          terraform -chdir=infrastructure/terraform apply \
-            -auto-approve \
-            -var-file="$GITHUB_WORKSPACE/$TFVARS_FILE" \
-            -var="aws_region=$AWS_REGION" \
-            -var="container_image_api=$API_IMAGE" \
-            -var="container_image_worker=$WORKER_IMAGE"
+            TASK_FAMILY="$family" \
+            CONTAINER_NAME="$container_name" \
+            IMAGE="$image" \
+            CPU="$cpu" \
+            MEMORY="$memory" \
+            LOG_GROUP="$log_group" \
+            node --input-type=module -e '
+              import { writeFileSync } from "node:fs";
+
+              const env = (name, value) => value ? { name, value } : null;
+              const secret = (name, valueFrom) => valueFrom ? { name, valueFrom } : null;
+              const containerName = process.env.CONTAINER_NAME;
+              const task = {
+                family: process.env.TASK_FAMILY,
+                networkMode: "awsvpc",
+                requiresCompatibilities: ["FARGATE"],
+                cpu: process.env.CPU,
+                memory: process.env.MEMORY,
+                executionRoleArn: process.env.ECS_EXECUTION_ROLE_ARN,
+                containerDefinitions: [{
+                  name: containerName,
+                  image: process.env.IMAGE,
+                  essential: true,
+                  portMappings: containerName === "api"
+                    ? [{ containerPort: 8080, hostPort: 8080, protocol: "tcp" }]
+                    : [],
+                  environment: [
+                    env("APP_ENV", process.env.ENVIRONMENT),
+                    env("AUTH_MODE", process.env.AUTH_MODE),
+                    env("PORT", containerName === "api" ? "8080" : ""),
+                    env("MIGRATIONS_DIR", containerName === "api" ? "/app/migrations" : ""),
+                    env("S3_BUCKET", process.env.S3_BUCKET),
+                    env("S3_REGION", process.env.AWS_REGION),
+                    env("SQS_QUEUE_URL", process.env.SQS_QUEUE_URL),
+                    env("SQS_REGION", process.env.AWS_REGION),
+                    env("VISION_PROVIDER", process.env.VISION_PROVIDER),
+                    env("VISION_ENDPOINT", process.env.VISION_ENDPOINT),
+                    env("IMAGE_GENERATION_PROVIDER", process.env.IMAGE_GENERATION_PROVIDER),
+                    env("IMAGE_GENERATION_ENDPOINT", process.env.IMAGE_GENERATION_ENDPOINT),
+                    env("GENERATION_CREDIT_COST", process.env.GENERATION_CREDIT_COST),
+                    env("WORKER_CONCURRENCY", process.env.WORKER_CONCURRENCY),
+                    env("WORKER_PROVIDER_TIMEOUT", process.env.WORKER_PROVIDER_TIMEOUT),
+                    env("WORKER_MAX_ATTEMPTS", process.env.WORKER_MAX_ATTEMPTS),
+                    env("S3_VERIFY_OBJECT_ON_COMPLETE", "true"),
+                  ].filter(Boolean),
+                  secrets: [
+                    secret("DATABASE_URL", process.env.DATABASE_URL_SECRET_ARN),
+                    secret("VISION_API_KEY", process.env.VISION_API_KEY_SECRET_ARN),
+                    secret("IMAGE_GENERATION_API_KEY", process.env.IMAGE_GENERATION_API_KEY_SECRET_ARN),
+                    secret("INTERNAL_JOB_TOKEN", process.env.INTERNAL_JOB_TOKEN_SECRET_ARN),
+                  ].filter(Boolean),
+                  logConfiguration: {
+                    logDriver: "awslogs",
+                    options: {
+                      "awslogs-group": process.env.LOG_GROUP,
+                      "awslogs-region": process.env.AWS_REGION,
+                      "awslogs-stream-prefix": containerName,
+                    },
+                  },
+                }],
+              };
+
+              if (process.env.ECS_TASK_ROLE_ARN) {
+                task.taskRoleArn = process.env.ECS_TASK_ROLE_ARN;
+              }
+
+              writeFileSync("task-definition.json", JSON.stringify(task));
+            '
+
+            aws ecs register-task-definition \
+              --region "$AWS_REGION" \
+              --cli-input-json file://task-definition.json \
+              --query 'taskDefinition.taskDefinitionArn' \
+              --output text > "$output_file"
+          }
+
+          deploy_service() {
+            local service="$1"
+            local task_definition_arn="$2"
+            local desired_count="$3"
+
+            local status
+            status="$(aws ecs describe-services \
+              --region "$AWS_REGION" \
+              --cluster "$ECS_CLUSTER" \
+              --services "$service" \
+              --query 'services[0].status' \
+              --output text 2>/dev/null || true)"
+
+            if [ "$status" = "ACTIVE" ]; then
+              aws ecs update-service \
+                --region "$AWS_REGION" \
+                --cluster "$ECS_CLUSTER" \
+                --service "$service" \
+                --task-definition "$task_definition_arn" \
+                --desired-count "$desired_count" \
+                --force-new-deployment >/dev/null
+            else
+              network_configuration="$(node --input-type=module -e '
+                const subnets = process.env.ECS_SUBNETS.split(",").map((item) => item.trim()).filter(Boolean);
+                const securityGroups = process.env.ECS_SECURITY_GROUPS.split(",").map((item) => item.trim()).filter(Boolean);
+                process.stdout.write(JSON.stringify({
+                  awsvpcConfiguration: {
+                    subnets,
+                    securityGroups,
+                    assignPublicIp: process.env.ECS_ASSIGN_PUBLIC_IP || "ENABLED",
+                  },
+                }));
+              ')"
+
+              aws ecs create-service \
+                --region "$AWS_REGION" \
+                --cluster "$ECS_CLUSTER" \
+                --service-name "$service" \
+                --task-definition "$task_definition_arn" \
+                --desired-count "$desired_count" \
+                --launch-type FARGATE \
+                --network-configuration "$network_configuration" >/dev/null
+            fi
+          }
+
+          api_log_group="/ecs/${PROJECT_NAME}-${ENVIRONMENT}-api"
+          worker_log_group="/ecs/${PROJECT_NAME}-${ENVIRONMENT}-worker"
+          ensure_log_group "$api_log_group"
+          ensure_log_group "$worker_log_group"
+
+          register_task_definition "$API_TASK_FAMILY" api "$API_IMAGE" "$API_CPU" "$API_MEMORY" "$api_log_group" api-task-definition-arn.txt
+          register_task_definition "$WORKER_TASK_FAMILY" worker "$WORKER_IMAGE" "$WORKER_CPU" "$WORKER_MEMORY" "$worker_log_group" worker-task-definition-arn.txt
+
+          api_task_definition_arn="$(cat api-task-definition-arn.txt)"
+          worker_task_definition_arn="$(cat worker-task-definition-arn.txt)"
+
+          deploy_service "$API_SERVICE" "$api_task_definition_arn" "$API_DESIRED_COUNT"
+          deploy_service "$WORKER_SERVICE" "$worker_task_definition_arn" "$WORKER_DESIRED_COUNT"
+
+          aws ecs wait services-stable \
+            --region "$AWS_REGION" \
+            --cluster "$ECS_CLUSTER" \
+            --services "$API_SERVICE" "$WORKER_SERVICE"
+
+          aws ecs describe-services \
+            --region "$AWS_REGION" \
+            --cluster "$ECS_CLUSTER" \
+            --services "$API_SERVICE" "$WORKER_SERVICE" \
+            --query 'services[].{serviceName:serviceName,status:status,desiredCount:desiredCount,runningCount:runningCount,pendingCount:pendingCount,taskDefinition:taskDefinition}' \
+            --output json
