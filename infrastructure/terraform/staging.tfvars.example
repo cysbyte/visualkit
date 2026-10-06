@@ -1,0 +1,20 @@
+project_name = "visualkit"
+environment  = "staging"
+aws_region   = "us-east-1"
+
+availability_zones = ["us-east-1a", "us-east-1b"]
+
+container_image_api    = "replace-me"
+container_image_worker = "replace-me"
+
+certificate_arn = "replace-me"
+api_domain_name = "api-staging.example.com"
+
+database_multi_az          = false
+enable_deletion_protection = false
+s3_force_destroy           = false
+auth_mode                  = "bearer"
+vision_provider            = "mock"
+vision_endpoint            = ""
+vision_api_key_secret_arn  = ""
+worker_min_capacity        = 1

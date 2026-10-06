@@ -1,0 +1,22 @@
+project_name = "visualkit"
+environment  = "production"
+aws_region   = "us-east-1"
+
+availability_zones = ["us-east-1a", "us-east-1b"]
+
+container_image_api    = "replace-me"
+container_image_worker = "replace-me"
+
+certificate_arn = "replace-me"
+api_domain_name = "api.example.com"
+
+database_instance_class       = "db.t4g.small"
+database_multi_az              = true
+database_backup_retention_days = 14
+enable_deletion_protection     = true
+s3_force_destroy               = false
+auth_mode                      = "bearer"
+vision_provider                = "mock"
+vision_endpoint                = ""
+vision_api_key_secret_arn      = ""
+worker_min_capacity            = 1

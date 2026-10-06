@@ -1,0 +1,17 @@
+project_name = "visualkit"
+environment  = "development"
+aws_region   = "us-east-1"
+
+availability_zones = ["us-east-1a", "us-east-1b"]
+
+container_image_api    = "replace-me"
+container_image_worker = "replace-me"
+
+certificate_arn = "replace-me"
+api_domain_name = "api-dev.example.com"
+
+database_multi_az       = false
+enable_deletion_protection = false
+s3_force_destroy        = true
+auth_mode               = "bearer"
+worker_min_capacity     = 1

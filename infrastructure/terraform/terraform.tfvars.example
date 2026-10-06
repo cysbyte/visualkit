@@ -1,0 +1,26 @@
+project_name = "visualkit"
+environment  = "staging"
+aws_region   = "us-east-1"
+
+availability_zones = [
+  "us-east-1a",
+  "us-east-1b"
+]
+
+container_image_api    = "000000000000.dkr.ecr.us-east-1.amazonaws.com/visualkit-staging/api:20260925-000000"
+container_image_worker = "000000000000.dkr.ecr.us-east-1.amazonaws.com/visualkit-staging/worker:20260925-000000"
+
+certificate_arn = "arn:aws:acm:us-east-1:000000000000:certificate/replace-me"
+api_domain_name = "api-staging.example.com"
+
+database_instance_class = "db.t4g.micro"
+database_multi_az       = false
+
+# Keep auth provider credentials and AI keys in Secrets Manager.
+# Set these to existing secret ARNs when the provider adapters are configured.
+auth_mode                         = "bearer"
+image_generation_api_key_secret_arn = ""
+internal_job_token_secret_arn       = ""
+
+s3_force_destroy           = false
+enable_deletion_protection = false
