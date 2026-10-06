@@ -137,6 +137,28 @@ jobs:
           terraform -chdir=infrastructure/terraform init \
             -backend-config="$GITHUB_WORKSPACE/$BACKEND_CONFIG"
 
+      - name: Import existing ECR repositories
+        run: |
+          if ! terraform -chdir=infrastructure/terraform state show aws_ecr_repository.api >/dev/null 2>&1; then
+            terraform -chdir=infrastructure/terraform import \
+              -var-file="$GITHUB_WORKSPACE/$TFVARS_FILE" \
+              -var="aws_region=$AWS_REGION" \
+              -var="container_image_api=$API_IMAGE" \
+              -var="container_image_worker=$WORKER_IMAGE" \
+              aws_ecr_repository.api \
+              "${PROJECT_NAME}-${ENVIRONMENT}/api"
+          fi
+
+          if ! terraform -chdir=infrastructure/terraform state show aws_ecr_repository.worker >/dev/null 2>&1; then
+            terraform -chdir=infrastructure/terraform import \
+              -var-file="$GITHUB_WORKSPACE/$TFVARS_FILE" \
+              -var="aws_region=$AWS_REGION" \
+              -var="container_image_api=$API_IMAGE" \
+              -var="container_image_worker=$WORKER_IMAGE" \
+              aws_ecr_repository.worker \
+              "${PROJECT_NAME}-${ENVIRONMENT}/worker"
+          fi
+
       - name: Terraform apply
         run: |
           terraform -chdir=infrastructure/terraform apply \
