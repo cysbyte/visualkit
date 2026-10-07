@@ -258,6 +258,9 @@ jobs:
               const env = (name, value) => value ? { name, value } : null;
               const secret = (name, valueFrom) => valueFrom ? { name, valueFrom } : null;
               const containerName = process.env.CONTAINER_NAME;
+              const appEnv = process.env.AUTH_MODE === "development"
+                ? "development"
+                : process.env.ENVIRONMENT;
               const task = {
                 family: process.env.TASK_FAMILY,
                 networkMode: "awsvpc",
@@ -273,7 +276,7 @@ jobs:
                     ? [{ containerPort: 8080, hostPort: 8080, protocol: "tcp" }]
                     : [],
                   environment: [
-                    env("APP_ENV", process.env.ENVIRONMENT),
+                    env("APP_ENV", appEnv),
                     env("AUTH_MODE", process.env.AUTH_MODE),
                     env("DEVELOPMENT_USER_ID", process.env.DEVELOPMENT_USER_ID),
                     env("PORT", containerName === "api" ? "8080" : ""),
