@@ -274,7 +274,11 @@ func (repository postgresTemplates) List(ctx context.Context) ([]models.Template
 	rows, err := repository.pool.Query(ctx,
 		`SELECT `+templateSelectColumns+`
 		FROM templates WHERE is_active = TRUE
-		ORDER BY featured DESC, source_case_id DESC NULLS LAST, name`,
+		ORDER BY
+			(thumbnail_url <> '') DESC,
+			featured DESC,
+			source_case_id DESC NULLS LAST,
+			name`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list templates: %w", err)
