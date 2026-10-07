@@ -71,6 +71,7 @@ func main() {
 	imageGenerator, err := providers.NewImageGenerationProvider(
 		configuration.ImageGenerationProvider,
 		configuration.ImageGenerationEndpoint,
+		configuration.ImageGenerationModel,
 		configuration.ImageGenerationAPIKey,
 	)
 	if err != nil {

@@ -37,6 +37,7 @@ type Config struct {
 	VisionAPIKey             string
 	ImageGenerationProvider  string
 	ImageGenerationEndpoint  string
+	ImageGenerationModel     string
 	ImageGenerationAPIKey    string
 	GenerationCreditCost     int
 	AuthMode                 string
@@ -131,6 +132,7 @@ func Load() (Config, error) {
 		VisionAPIKey:             os.Getenv("VISION_API_KEY"),
 		ImageGenerationProvider:  env("IMAGE_GENERATION_PROVIDER", "mock"),
 		ImageGenerationEndpoint:  strings.TrimSpace(os.Getenv("IMAGE_GENERATION_ENDPOINT")),
+		ImageGenerationModel:     strings.TrimSpace(os.Getenv("IMAGE_GENERATION_MODEL")),
 		ImageGenerationAPIKey:    os.Getenv("IMAGE_GENERATION_API_KEY"),
 		GenerationCreditCost:     generationCreditCost,
 		AuthMode:                 env("AUTH_MODE", "development"),

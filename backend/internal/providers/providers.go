@@ -125,6 +125,14 @@ type HTTPImageGenerationProvider struct {
 	MaxResponseBytes int64
 }
 
+type OpenAIImageGenerationProvider struct {
+	Endpoint         string
+	Model            string
+	APIKey           string
+	Client           *http.Client
+	MaxResponseBytes int64
+}
+
 type httpGenerationRequest struct {
 	Prompt         string                      `json:"prompt"`
 	OriginalPrompt string                      `json:"original_prompt"`
@@ -159,6 +167,20 @@ type httpGenerationResponse struct {
 	MimeType        string `json:"mime_type"`
 	PixelWidth      int    `json:"pixel_width"`
 	PixelHeight     int    `json:"pixel_height"`
+}
+
+type openAIImageGenerationRequest struct {
+	Model          string `json:"model"`
+	Prompt         string `json:"prompt"`
+	Size           string `json:"size,omitempty"`
+	ResponseFormat string `json:"response_format,omitempty"`
+}
+
+type openAIImageGenerationResponse struct {
+	Data []struct {
+		B64JSON string `json:"b64_json"`
+		URL     string `json:"url"`
+	} `json:"data"`
 }
 
 func (provider HTTPImageGenerationProvider) GenerateImage(
@@ -263,6 +285,100 @@ func (provider HTTPImageGenerationProvider) GenerateImage(
 		PixelWidth:    decoded.PixelWidth,
 		PixelHeight:   decoded.PixelHeight,
 	}, nil
+}
+
+func (provider OpenAIImageGenerationProvider) GenerateImage(
+	ctx context.Context,
+	input GenerationInput,
+) (GeneratedImage, error) {
+	if strings.TrimSpace(provider.Endpoint) == "" {
+		return GeneratedImage{}, NewProviderError("PROVIDER_NOT_CONFIGURED", false, ErrProviderUnavailable)
+	}
+	if strings.TrimSpace(input.ProviderPrompt) == "" {
+		return GeneratedImage{}, ErrInvalidPrompt
+	}
+	endpoint, err := url.Parse(provider.Endpoint)
+	if err != nil || endpoint.Scheme == "" || endpoint.Host == "" {
+		return GeneratedImage{}, NewProviderError("PROVIDER_ENDPOINT_INVALID", false, errOrDefault(err, ErrProviderUnavailable))
+	}
+	model := strings.TrimSpace(provider.Model)
+	if model == "" {
+		model = "gpt-image-1"
+	}
+	encoded, err := json.Marshal(openAIImageGenerationRequest{
+		Model:          model,
+		Prompt:         input.ProviderPrompt,
+		Size:           imageSizeForAspectRatio(input.Intent.GenerationSettings.AspectRatio),
+		ResponseFormat: "b64_json",
+	})
+	if err != nil {
+		return GeneratedImage{}, NewProviderError("REQUEST_ENCODING_FAILED", false, err)
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewReader(encoded))
+	if err != nil {
+		return GeneratedImage{}, NewProviderError("REQUEST_BUILD_FAILED", false, err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	if provider.APIKey != "" {
+		request.Header.Set("Authorization", "Bearer "+provider.APIKey)
+	}
+	client := provider.Client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		if ctx.Err() != nil {
+			return GeneratedImage{}, ctx.Err()
+		}
+		return GeneratedImage{}, NewProviderError("PROVIDER_NETWORK_ERROR", true, err)
+	}
+	defer response.Body.Close()
+	limit := provider.MaxResponseBytes
+	if limit <= 0 {
+		limit = 100 * 1024 * 1024
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
+	if err != nil {
+		return GeneratedImage{}, NewProviderError("PROVIDER_RESPONSE_READ_FAILED", true, err)
+	}
+	if int64(len(body)) > limit {
+		return GeneratedImage{}, NewProviderError("PROVIDER_RESPONSE_TOO_LARGE", false, ErrProviderResponse)
+	}
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return GeneratedImage{}, providerHTTPError(response.StatusCode, body)
+	}
+	var decoded openAIImageGenerationResponse
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		return GeneratedImage{}, NewProviderError("PROVIDER_RESPONSE_INVALID_JSON", false, err)
+	}
+	if len(decoded.Data) == 0 {
+		return GeneratedImage{}, NewProviderError("PROVIDER_IMAGE_MISSING", false, ErrProviderResponse)
+	}
+	imageData, err := decodeImageData(decoded.Data[0].B64JSON, decoded.Data[0].URL, client, ctx)
+	if err != nil {
+		return GeneratedImage{}, err
+	}
+	if len(imageData) == 0 {
+		return GeneratedImage{}, NewProviderError("PROVIDER_IMAGE_MISSING", false, ErrProviderResponse)
+	}
+	return GeneratedImage{
+		Data:     imageData,
+		MimeType: "image/png",
+	}, nil
+}
+
+func imageSizeForAspectRatio(aspectRatio string) string {
+	switch strings.TrimSpace(aspectRatio) {
+	case "1:1":
+		return "1024x1024"
+	case "16:9":
+		return "1536x864"
+	case "9:16":
+		return "864x1536"
+	default:
+		return "1024x1024"
+	}
 }
 
 func decodeImageData(encodedValue, imageURL string, client *http.Client, ctx context.Context) ([]byte, error) {
@@ -431,12 +547,14 @@ func NewVisionProvider(name, endpoint, apiKey string) (VisionProvider, error) {
 	}
 }
 
-func NewImageGenerationProvider(name, endpoint, apiKey string) (ImageGenerationProvider, error) {
+func NewImageGenerationProvider(name, endpoint, model, apiKey string) (ImageGenerationProvider, error) {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "", "mock":
 		return MockImageGenerationProvider{}, nil
 	case "http":
 		return HTTPImageGenerationProvider{Endpoint: endpoint, APIKey: apiKey}, nil
+	case "cheaperinference", "openai":
+		return OpenAIImageGenerationProvider{Endpoint: endpoint, Model: model, APIKey: apiKey}, nil
 	default:
 		return nil, fmt.Errorf("unsupported image generation provider %q", name)
 	}

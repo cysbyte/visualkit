@@ -126,6 +126,44 @@ func TestHTTPImageGenerationProviderClassifiesHTTPFailures(t *testing.T) {
 	}
 }
 
+func TestOpenAIImageGenerationProviderParsesBase64Response(t *testing.T) {
+	var received openAIImageGenerationRequest
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.Header.Get("Authorization") != "Bearer secret" {
+			t.Fatalf("authorization header was not forwarded")
+		}
+		if err := json.NewDecoder(request.Body).Decode(&received); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		body := `{"data":[{"b64_json":"` + base64.StdEncoding.EncodeToString([]byte("generated-image")) + `"}]}`
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Header:     make(http.Header),
+		}, nil
+	})}
+	result, err := (OpenAIImageGenerationProvider{
+		Endpoint: "https://api.test/v1/images/generations",
+		Model:    "test-image-model",
+		APIKey:   "secret",
+		Client:   client,
+	}).GenerateImage(context.Background(), GenerationInput{
+		Intent: models.GenerationIntent{
+			GenerationSettings: models.GenerationSettings{AspectRatio: "1:1"},
+		},
+		ProviderPrompt: "A product photo",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(result.Data) != "generated-image" {
+		t.Fatalf("generated image = %q", result.Data)
+	}
+	if received.Model != "test-image-model" || received.Prompt != "A product photo" || received.ResponseFormat != "b64_json" {
+		t.Fatalf("provider request = %#v", received)
+	}
+}
+
 func TestHTTPVisionProviderParsesStructuredResponse(t *testing.T) {
 	visualDNA := models.MockVisualDNA()
 	payload, err := json.Marshal(map[string]any{"visual_dna": visualDNA})
