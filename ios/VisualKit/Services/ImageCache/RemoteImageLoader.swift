@@ -150,7 +150,30 @@ struct RemoteImageView: View {
     }
 
     private func fetch(url: URL) async throws -> (Data, URLResponse) {
-        try await URLSession.shared.data(from: url)
+        var request = URLRequest(url: url)
+        if let configuration = APIConfiguration.fromEnvironment(),
+           sameOrigin(url, configuration.baseURL) {
+            if let bearerToken = configuration.bearerToken, !bearerToken.isEmpty {
+                request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
+            } else if let developmentUserID = configuration.developmentUserID {
+                request.setValue(developmentUserID.uuidString, forHTTPHeaderField: "X-User-ID")
+            }
+        }
+        return try await URLSession.shared.data(for: request)
+    }
+
+    private func sameOrigin(_ first: URL, _ second: URL) -> Bool {
+        first.scheme?.lowercased() == second.scheme?.lowercased()
+            && first.host?.lowercased() == second.host?.lowercased()
+            && (first.port ?? defaultPort(for: first.scheme)) == (second.port ?? defaultPort(for: second.scheme))
+    }
+
+    private func defaultPort(for scheme: String?) -> Int? {
+        switch scheme?.lowercased() {
+        case "http": return 80
+        case "https": return 443
+        default: return nil
+        }
     }
 }
 

@@ -66,10 +66,10 @@ struct CreateView: View {
             applyPendingStyle()
         }
         .onChange(of: viewModel.generationResult) { _, result in
-            guard result != nil, let activeCreationID else {
+            guard let result, let activeCreationID else {
                 return
             }
-            appState.removeCreation(id: activeCreationID)
+            appState.replaceCreation(id: activeCreationID, with: result.creation)
             self.activeCreationID = nil
         }
         .onChange(of: viewModel.generationFailureMessage) { _, message in

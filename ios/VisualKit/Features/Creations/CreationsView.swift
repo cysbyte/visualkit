@@ -38,6 +38,12 @@ struct CreationsView: View {
         .background(VisualKitTheme.paper.ignoresSafeArea())
         .navigationTitle("Gallery")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await appState.refreshCreations()
+        }
+        .refreshable {
+            await appState.refreshCreations()
+        }
         .navigationDestination(item: $selectedCreation) { creation in
             CreationDetailView(creation: creation)
         }

@@ -32,6 +32,7 @@ struct CreationImageView: View {
     @EnvironmentObject private var appState: AppState
     let creation: Creation
     var useThumbnail = false
+    var contentMode: ContentMode = .fill
 
     var body: some View {
         Group {
@@ -39,10 +40,11 @@ struct CreationImageView: View {
                let image = UIImage(data: data) {
                 Image(uiImage: image)
                     .resizable()
-                    .scaledToFill()
+                    .aspectRatio(contentMode: contentMode)
             } else if let url = useThumbnail ? creation.thumbnailURL : creation.generatedImageURL {
                 RemoteImageView(
                     url: url,
+                    contentMode: contentMode,
                     refreshURL: assetRefreshURL
                 )
             } else {

@@ -1380,7 +1380,7 @@ func (service CreationService) assetURLs(
 	userID uuid.UUID,
 	creation models.Creation,
 ) (string, string, error) {
-	if service.Storage == nil || service.Assets == nil {
+	if service.Assets == nil {
 		if creation.ImageAssetID != nil || creation.GeneratedAssetID != nil ||
 			creation.ThumbnailAssetID != nil {
 			return "", "", api.ErrUnavailable
@@ -1406,19 +1406,17 @@ func (service CreationService) assetURL(
 	if assetID == nil {
 		return "", nil
 	}
-	download, err := (AssetService{
-		Assets:  service.Assets,
-		Storage: service.Storage,
-		Config:  service.Config,
-	}).CreateDownloadURL(ctx, userID, *assetID)
+	asset, err := service.Assets.Get(ctx, userID, *assetID)
 	if err != nil {
-		if errors.Is(err, database.ErrNotFound) ||
-			errors.Is(err, api.ErrInvalidRequest) {
+		if errors.Is(err, database.ErrNotFound) {
 			return "", nil
 		}
 		return "", err
 	}
-	return download.DownloadURL, nil
+	if asset.Status != models.ImageAssetStatusReady {
+		return "", nil
+	}
+	return "/v1/assets/" + asset.ID.String() + "/content", nil
 }
 
 func firstAssetIDPointer(values ...*uuid.UUID) *uuid.UUID {

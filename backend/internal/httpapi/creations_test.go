@@ -221,7 +221,11 @@ func TestCreationsHTTPListUsesCursorPaginationAndCompactItems(t *testing.T) {
 	}
 	if envelope.Data.Items[0].ImageURL == "" ||
 		envelope.Data.Items[0].ThumbnailURL == "" {
-		t.Fatalf("signed URLs missing: %#v", envelope.Data.Items[0])
+		t.Fatalf("asset URLs missing: %#v", envelope.Data.Items[0])
+	}
+	if !strings.HasPrefix(envelope.Data.Items[0].ImageURL, "/v1/assets/") ||
+		!strings.HasSuffix(envelope.Data.Items[0].ImageURL, "/content") {
+		t.Fatalf("image URL = %q, want stable asset content URL", envelope.Data.Items[0].ImageURL)
 	}
 	if envelope.Data.Items[0].Style == nil {
 		t.Fatal("expected compact style summary")

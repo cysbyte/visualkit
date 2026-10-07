@@ -270,7 +270,7 @@ func TestCreationServiceListPagePaginatesInStableDescendingOrder(t *testing.T) {
 	}
 }
 
-func TestCreationServiceListPageReturnsSignedURLsWithoutVisualDNAPayload(t *testing.T) {
+func TestCreationServiceListPageReturnsStableAssetURLsWithoutVisualDNAPayload(t *testing.T) {
 	creations := newCreationTestRepository()
 	assets := newCreationTestAssets()
 	objectStorage := storage.NewMockObjectStorage()
@@ -287,7 +287,13 @@ func TestCreationServiceListPageReturnsSignedURLsWithoutVisualDNAPayload(t *test
 	}
 	item := page.Items[0]
 	if item.ImageURL == "" || item.ThumbnailURL == "" {
-		t.Fatalf("signed URLs missing: %#v", item)
+		t.Fatalf("asset URLs missing: %#v", item)
+	}
+	if item.ImageURL != "/v1/assets/"+item.ImageAssetID.String()+"/content" {
+		t.Fatalf("image URL = %q, want stable asset content URL", item.ImageURL)
+	}
+	if item.ThumbnailURL != "/v1/assets/"+item.ThumbnailAssetID.String()+"/content" {
+		t.Fatalf("thumbnail URL = %q, want stable asset content URL", item.ThumbnailURL)
 	}
 	if item.Prompt != "A city street" || item.Template.Name != "Cinematic" {
 		t.Fatalf("list item = %#v", item)
@@ -310,7 +316,10 @@ func TestCreationServiceDetailAndOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	if detail.VisualDNA == nil || detail.ImageURL == "" {
-		t.Fatalf("detail = %#v, want metadata and signed URL", detail)
+		t.Fatalf("detail = %#v, want metadata and asset URL", detail)
+	}
+	if detail.ImageURL != "/v1/assets/"+detail.ImageAssetID.String()+"/content" {
+		t.Fatalf("image URL = %q, want stable asset content URL", detail.ImageURL)
 	}
 	if _, err := service.Detail(context.Background(), otherUserID, creation.ID); !errors.Is(err, database.ErrNotFound) {
 		t.Fatalf("cross-user detail error = %v, want not found", err)

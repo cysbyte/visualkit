@@ -246,6 +246,37 @@ func (server *Server) asset(response http.ResponseWriter, request *http.Request)
 			return
 		}
 		api.WriteData(response, http.StatusOK, download)
+	case request.Method == http.MethodGet && parts[1] == "content":
+		asset, assetErr := server.services.Assets.Get(request.Context(), userID, assetID)
+		if assetErr != nil {
+			server.handleError(response, assetErr)
+			return
+		}
+		if asset.Status != models.ImageAssetStatusReady {
+			server.handleError(response, fmtErrorInvalid("asset is not ready"))
+			return
+		}
+		if server.services.Storage == nil {
+			server.handleError(response, api.ErrUnavailable)
+			return
+		}
+		object, objectErr := server.services.Storage.GetObject(request.Context(), asset.ObjectKey)
+		if objectErr != nil {
+			server.handleError(response, objectErr)
+			return
+		}
+		contentType := object.ContentType
+		if contentType == "" {
+			contentType = asset.MimeType
+		}
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+		response.Header().Set("Content-Type", contentType)
+		response.Header().Set("Cache-Control", "private, max-age=300")
+		response.Header().Set("Content-Length", strconv.Itoa(len(object.Data)))
+		response.WriteHeader(http.StatusOK)
+		_, _ = response.Write(object.Data)
 	default:
 		server.methodNotAllowed(response)
 	}

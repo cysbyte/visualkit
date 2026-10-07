@@ -90,9 +90,33 @@ final class AppState: ObservableObject {
             persistStyles()
         }
         if let page = try? await remoteCreations {
-            creations = page.items
-            persistCreations()
+            applyRemoteCreations(page.items)
         }
+    }
+
+    func refreshCreations() async {
+        guard let remoteClient else { return }
+        isSyncing = true
+        defer { isSyncing = false }
+
+        do {
+            let page = try await remoteClient.listCreations(limit: 100, cursor: nil)
+            applyRemoteCreations(page.items)
+            print("[VisualKit] Remote creations loaded count=\(page.items.count) hasMore=\(page.hasMore)")
+        } catch {
+            print("[VisualKit] Remote creations failed error=\(error)")
+        }
+    }
+
+    private func applyRemoteCreations(_ remoteCreations: [Creation]) {
+        let localPending = creations.filter { creation in
+            creation.status != .completed
+                && !remoteCreations.contains(where: { $0.id == creation.id })
+        }
+        creations = (remoteCreations + localPending)
+            .uniquedByID()
+            .sorted { $0.createdAt > $1.createdAt }
+        persistCreations()
     }
 
     func addCreation(_ creation: Creation) {
@@ -108,6 +132,12 @@ final class AppState: ObservableObject {
         }
         creations[index] = creation
         creations.sort { $0.createdAt > $1.createdAt }
+        persistCreations()
+    }
+
+    func replaceCreation(id: UUID, with creation: Creation) {
+        creations.removeAll { $0.id == id || $0.id == creation.id }
+        creations.insert(creation, at: 0)
         persistCreations()
     }
 
@@ -232,7 +262,7 @@ final class AppState: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             do {
-                let (data, response) = try await URLSession.shared.data(from: assetURL)
+                let (data, response) = try await fetchImageData(from: assetURL)
                 guard let httpResponse = response as? HTTPURLResponse,
                       (200..<300).contains(httpResponse.statusCode),
                       let image = UIImage(data: data) else {
@@ -252,6 +282,13 @@ final class AppState: ObservableObject {
                 await setCreationReference(selected)
             } catch {}
         }
+    }
+
+    private func fetchImageData(from url: URL) async throws -> (Data, URLResponse) {
+        if let remoteClient {
+            return try await remoteClient.fetchData(from: url)
+        }
+        return try await URLSession.shared.data(from: url)
     }
 
     private func setCreationReference(_ image: SelectedImage) async {
@@ -305,4 +342,16 @@ enum AppTab: Hashable {
     case creations
     case styles
     case settings
+}
+
+private extension Array where Element == Creation {
+    func uniquedByID() -> [Creation] {
+        var seen = Set<UUID>()
+        var result: [Creation] = []
+        for creation in self where !seen.contains(creation.id) {
+            seen.insert(creation.id)
+            result.append(creation)
+        }
+        return result
+    }
 }

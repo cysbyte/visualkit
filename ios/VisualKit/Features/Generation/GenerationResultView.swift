@@ -44,6 +44,12 @@ struct GenerationResultView: View {
         } message: {
             Text("You can find this image in Gallery and Recent Gallery on Home.")
         }
+        .onAppear {
+            if let result = viewModel.generationResult,
+               appState.creations.contains(where: { $0.id == result.creation.id }) {
+                didSaveCreation = true
+            }
+        }
     }
 
     private var resultHeader: some View {
@@ -272,7 +278,10 @@ struct GenerationResultView: View {
     }
 
     private func saveCreation(_ creation: Creation) {
-        guard !didSaveCreation else { return }
+        guard !didSaveCreation else {
+            isShowingSaveConfirmation = true
+            return
+        }
         appState.addCreation(creation)
         didSaveCreation = true
         isShowingSaveConfirmation = true
@@ -312,6 +321,7 @@ private struct ResultActionLabel: View {
 private struct GenerationArtwork: View {
     let creation: Creation
     let aspectRatio: AspectRatio
+    @State private var isShowingExpandedImage = false
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
@@ -334,6 +344,63 @@ private struct GenerationArtwork: View {
             .font(.caption.weight(.semibold))
             .foregroundStyle(.white.opacity(0.92))
             .padding(14)
+
+            if canExpand {
+                Button {
+                    isShowingExpandedImage = true
+                } label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 42, height: 42)
+                        .background(.black.opacity(0.48), in: Circle())
+                        .overlay(
+                            Circle()
+                                .stroke(.white.opacity(0.18), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .padding(12)
+                .accessibilityLabel("Maximize generated image")
+            }
+        }
+        .fullScreenCover(isPresented: $isShowingExpandedImage) {
+            ExpandedGenerationImageView(creation: creation)
+        }
+    }
+
+    private var canExpand: Bool {
+        creation.generatedImage != nil || creation.generatedImageURL != nil
+    }
+}
+
+private struct ExpandedGenerationImageView: View {
+    @Environment(\.dismiss) private var dismiss
+    let creation: Creation
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+
+            CreationImageView(creation: creation, contentMode: .fit)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 56)
+
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .background(.white.opacity(0.16), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 18)
+            .padding(.trailing, 18)
+            .accessibilityLabel("Close")
         }
     }
 }

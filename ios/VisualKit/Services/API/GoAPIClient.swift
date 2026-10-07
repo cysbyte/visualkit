@@ -239,7 +239,7 @@ final class GoAPIClient: BackendAPIClient, @unchecked Sendable {
             operation: .request
         )
         return CreationPage(
-            items: page.items.map(\.localCreation),
+            items: page.items.map { $0.localCreation(baseURL: configuration.baseURL) },
             nextCursor: page.nextCursor,
             hasMore: page.hasMore
         )
@@ -251,7 +251,7 @@ final class GoAPIClient: BackendAPIClient, @unchecked Sendable {
             path: "/v1/creations/\(id.uuidString)",
             operation: .request
         )
-        return value.localCreation
+        return value.localCreation(baseURL: configuration.baseURL)
     }
 
     func deleteCreation(id: UUID) async throws {
@@ -324,6 +324,15 @@ final class GoAPIClient: BackendAPIClient, @unchecked Sendable {
         return result
     }
 
+    func fetchData(from url: URL) async throws -> (Data, URLResponse) {
+        var request = URLRequest(url: url)
+        request.timeoutInterval = configuration.requestTimeout
+        if sameOrigin(url, configuration.baseURL) {
+            applyAuthentication(to: &request)
+        }
+        return try await session.data(for: request)
+    }
+
     private func backendTemplateID(for template: Template) async throws -> UUID? {
         if let backendID = template.backendID {
             print("[VisualKit] Template backendID direct id=\(template.id) backendID=\(backendID.uuidString)")
@@ -361,13 +370,31 @@ final class GoAPIClient: BackendAPIClient, @unchecked Sendable {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = body
         }
+        applyAuthentication(to: &request)
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+        return request
+    }
+
+    private func applyAuthentication(to request: inout URLRequest) {
         if let bearerToken = configuration.bearerToken, !bearerToken.isEmpty {
             request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
         } else if let developmentUserID = configuration.developmentUserID {
             request.setValue(developmentUserID.uuidString, forHTTPHeaderField: "X-User-ID")
         }
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
-        return request
+    }
+
+    private func sameOrigin(_ first: URL, _ second: URL) -> Bool {
+        first.scheme?.lowercased() == second.scheme?.lowercased()
+            && first.host?.lowercased() == second.host?.lowercased()
+            && (first.port ?? defaultPort(for: first.scheme)) == (second.port ?? defaultPort(for: second.scheme))
+    }
+
+    private func defaultPort(for scheme: String?) -> Int? {
+        switch scheme?.lowercased() {
+        case "http": return 80
+        case "https": return 443
+        default: return nil
+        }
     }
 
     private func request<T: Decodable>(
@@ -973,7 +1000,7 @@ private struct BackendCreation: Decodable {
         case originalPrompt = "original_prompt"
     }
 
-    var localCreation: Creation {
+    func localCreation(baseURL: URL) -> Creation {
         let template = Template(
             id: template.id.uuidString,
             backendID: template.id,
@@ -1002,8 +1029,8 @@ private struct BackendCreation: Decodable {
             id: id,
             generatedAssetID: imageAssetID,
             thumbnailAssetID: thumbnailAssetID,
-            generatedImageURL: imageURL,
-            thumbnailURL: thumbnailURL,
+            generatedImageURL: resolvedURL(imageURL, baseURL: baseURL),
+            thumbnailURL: resolvedURL(thumbnailURL, baseURL: baseURL),
             prompt: originalPrompt ?? prompt,
             template: template,
             visualDNA: visualDNA,
@@ -1016,6 +1043,14 @@ private struct BackendCreation: Decodable {
             failureMessage: failureMessage,
             generationRequest: generationRequest
         )
+    }
+
+    private func resolvedURL(_ value: URL?, baseURL: URL) -> URL? {
+        guard let value else { return nil }
+        if value.scheme != nil {
+            return value
+        }
+        return URL(string: value.relativeString, relativeTo: baseURL)?.absoluteURL
     }
 }
 
