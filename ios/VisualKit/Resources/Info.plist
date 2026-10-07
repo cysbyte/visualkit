@@ -18,6 +18,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>APIBaseURL</key>
 	<string>https://api-visualkit.framemio.com</string>
+	<key>APIDevelopmentUserID</key>
+	<string>EEF76928-B96A-47E4-9399-FA7FF0246B83</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>VisualKit needs permission to save generated images to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

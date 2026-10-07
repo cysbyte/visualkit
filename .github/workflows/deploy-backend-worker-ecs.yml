@@ -53,7 +53,8 @@ env:
   API_MEMORY: ${{ vars.API_MEMORY || '1024' }}
   WORKER_CPU: ${{ vars.WORKER_CPU || '1024' }}
   WORKER_MEMORY: ${{ vars.WORKER_MEMORY || '2048' }}
-  AUTH_MODE: ${{ vars.AUTH_MODE || 'bearer' }}
+  AUTH_MODE: ${{ vars.AUTH_MODE || 'development' }}
+  DEVELOPMENT_USER_ID: ${{ vars.DEVELOPMENT_USER_ID || 'EEF76928-B96A-47E4-9399-FA7FF0246B83' }}
   S3_BUCKET: ${{ vars.S3_BUCKET }}
   SQS_QUEUE_URL: ${{ vars.SQS_QUEUE_URL }}
   VISION_PROVIDER: ${{ vars.VISION_PROVIDER || 'mock' }}
@@ -274,6 +275,7 @@ jobs:
                   environment: [
                     env("APP_ENV", process.env.ENVIRONMENT),
                     env("AUTH_MODE", process.env.AUTH_MODE),
+                    env("DEVELOPMENT_USER_ID", process.env.DEVELOPMENT_USER_ID),
                     env("PORT", containerName === "api" ? "8080" : ""),
                     env("MIGRATIONS_DIR", containerName === "api" ? "/app/migrations" : ""),
                     env("S3_BUCKET", process.env.S3_BUCKET),
