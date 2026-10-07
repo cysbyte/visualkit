@@ -253,6 +253,10 @@ jobs:
             CPU="$cpu" \
             MEMORY="$memory" \
             LOG_GROUP="$log_group" \
+            DATABASE_URL_SECRET_ARN="$DATABASE_URL_SECRET_ARN" \
+            VISION_API_KEY_SECRET_ARN="$VISION_API_KEY_SECRET_ARN" \
+            IMAGE_GENERATION_API_KEY_SECRET_ARN="$IMAGE_GENERATION_API_KEY_SECRET_ARN" \
+            INTERNAL_JOB_TOKEN_SECRET_ARN="$INTERNAL_JOB_TOKEN_SECRET_ARN" \
             node --input-type=module -e '
               import { writeFileSync } from "node:fs";
 
