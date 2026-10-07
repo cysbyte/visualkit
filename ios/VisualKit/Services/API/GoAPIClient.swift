@@ -330,6 +330,8 @@ final class GoAPIClient: BackendAPIClient, @unchecked Sendable {
             candidate.id == template.id
                 || candidate.id == template.backendSlugFallback
                 || candidate.name.caseInsensitiveCompare(template.name) == .orderedSame
+        }?.backendID ?? templates.first {
+            $0.category == template.category
         }?.backendID
     }
 

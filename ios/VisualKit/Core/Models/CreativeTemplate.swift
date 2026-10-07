@@ -155,31 +155,31 @@ struct Template: Identifiable, Hashable, Codable, Sendable {
              "case-music-event-poster",
              "case-editorial-magazine-cover",
              "case-social-announcement-poster":
-            return "editorial"
+            return "case-542"
         case "case-studio-product":
-            return "product-photography"
+            return "case-543"
         case "case-saas-dashboard":
-            return "3d"
+            return "case-440"
         case "case-isometric-space":
-            return "3d"
+            return "case-353"
         case "case-character-sheet":
-            return "portrait"
+            return "case-378"
         case "case-data-infographic":
-            return "minimal"
+            return "case-001"
         case "case-brand-mark":
-            return "minimal"
+            return "case-310"
         case "case-realistic-portrait":
-            return "portrait"
+            return "case-359"
         case "case-story-scene":
-            return "cinematic"
+            return "case-330"
         case "case-illustrated-cover":
-            return "anime"
+            return "case-540"
         case "case-archive-document":
-            return "editorial"
+            return "case-541"
         case "case-classical-remix":
-            return "cinematic"
+            return "case-338"
         case "case-experimental-template":
-            return "minimal"
+            return "case-544"
         default:
             return nil
         }
