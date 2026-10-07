@@ -26,8 +26,8 @@ func TestLoadDefaults(t *testing.T) {
 	if configuration.Environment != "development" {
 		t.Fatalf("environment = %q, want development", configuration.Environment)
 	}
-	if configuration.GenerationCreditCost != 80 {
-		t.Fatalf("generation credit cost = %d, want 80", configuration.GenerationCreditCost)
+	if configuration.GenerationCreditCost != 10 {
+		t.Fatalf("generation credit cost = %d, want 10", configuration.GenerationCreditCost)
 	}
 }
 

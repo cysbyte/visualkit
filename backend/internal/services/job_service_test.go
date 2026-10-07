@@ -186,11 +186,12 @@ func TestCreateGenerationJobReusesIdempotencyKey(t *testing.T) {
 	if err := credits.Append(context.Background(), models.CreditLedgerEntry{
 		UserID: userID,
 		Type:   models.CreditLedgerTypePurchase,
-		Amount: 80,
+		Amount: 10,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	service.Credits = credits
+	service.GenerationCreditCost = 10
 	key := uuid.New().String()
 	input := CreateGenerationInput{
 		UserPrompt: "A woman walking in Paris",
@@ -224,11 +225,12 @@ func TestCreateGenerationJobRejectsIdempotencyKeyForDifferentRequest(t *testing.
 	if err := credits.Append(context.Background(), models.CreditLedgerEntry{
 		UserID: userID,
 		Type:   models.CreditLedgerTypePurchase,
-		Amount: 160,
+		Amount: 20,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	service.Credits = credits
+	service.GenerationCreditCost = 10
 	key := uuid.New().String()
 	input := CreateGenerationInput{
 		UserPrompt: "A woman walking in Paris",
@@ -271,13 +273,13 @@ func TestGenerationQueueFailureRefundsReservedCredits(t *testing.T) {
 	if err := credits.Append(context.Background(), models.CreditLedgerEntry{
 		UserID: userID,
 		Type:   models.CreditLedgerTypePurchase,
-		Amount: 80,
+		Amount: 10,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	service := newJobService(repository, publisher)
 	service.Credits = credits
-	service.GenerationCreditCost = 80
+	service.GenerationCreditCost = 10
 
 	job, err := service.CreateGenerationJob(context.Background(), userID, CreateGenerationInput{
 		UserPrompt: "A city street",
@@ -303,8 +305,8 @@ func TestGenerationQueueFailureRefundsReservedCredits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if balance != 80 {
-		t.Fatalf("balance after queue failure = %d, want 80", balance)
+	if balance != 10 {
+		t.Fatalf("balance after queue failure = %d, want 10", balance)
 	}
 }
 
@@ -360,13 +362,13 @@ func TestCancelGenerationRefundsReservedCredits(t *testing.T) {
 	if err := credits.Append(context.Background(), models.CreditLedgerEntry{
 		UserID: userID,
 		Type:   models.CreditLedgerTypePurchase,
-		Amount: 80,
+		Amount: 10,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	service := newJobService(repository, publisher)
 	service.Credits = credits
-	service.GenerationCreditCost = 80
+	service.GenerationCreditCost = 10
 
 	job, err := service.CreateGenerationJob(context.Background(), userID, CreateGenerationInput{
 		UserPrompt: "A mountain cabin",
@@ -385,8 +387,8 @@ func TestCancelGenerationRefundsReservedCredits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if balance != 80 {
-		t.Fatalf("balance after cancellation = %d, want 80", balance)
+	if balance != 10 {
+		t.Fatalf("balance after cancellation = %d, want 10", balance)
 	}
 	if _, err := service.CancelJob(context.Background(), userID, job.ID); err != nil {
 		t.Fatal(err)
@@ -395,7 +397,7 @@ func TestCancelGenerationRefundsReservedCredits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if balance != 80 {
-		t.Fatalf("balance after repeated cancellation = %d, want 80", balance)
+	if balance != 10 {
+		t.Fatalf("balance after repeated cancellation = %d, want 10", balance)
 	}
 }

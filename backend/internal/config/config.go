@@ -99,7 +99,7 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	generationCreditCost, err := envInt("GENERATION_CREDIT_COST", 80)
+	generationCreditCost, err := envInt("GENERATION_CREDIT_COST", 10)
 	if err != nil {
 		return Config{}, err
 	}

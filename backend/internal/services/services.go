@@ -812,7 +812,7 @@ func (service JobService) generationCost() int {
 	if service.GenerationCreditCost > 0 {
 		return service.GenerationCreditCost
 	}
-	return 80
+	return 10
 }
 
 func structToMap(value any) (map[string]any, error) {
@@ -1640,7 +1640,7 @@ func (service CreditService) creditCost() int {
 	if service.GenerationCreditCost > 0 {
 		return service.GenerationCreditCost
 	}
-	return 80
+	return 10
 }
 
 func validateUserID(userID uuid.UUID) error {

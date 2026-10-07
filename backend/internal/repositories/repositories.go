@@ -111,13 +111,32 @@ type postgresUsers struct{ pool *pgxpool.Pool }
 
 func (repository postgresUsers) Ensure(ctx context.Context, id uuid.UUID) (models.User, error) {
 	now := time.Now().UTC()
-	_, err := repository.pool.Exec(ctx, `
+	transaction, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return models.User{}, fmt.Errorf("begin ensure user: %w", err)
+	}
+	defer transaction.Rollback(ctx)
+	_, err = transaction.Exec(ctx, `
 		INSERT INTO users (id, created_at, updated_at)
 		VALUES ($1, $2, $2)
 		ON CONFLICT (id) DO UPDATE SET updated_at = EXCLUDED.updated_at
 	`, id, now)
 	if err != nil {
 		return models.User{}, fmt.Errorf("ensure user: %w", err)
+	}
+	_, err = transaction.Exec(ctx, `
+		INSERT INTO credit_ledger (
+			id, user_id, type, reference_type, metadata,
+			amount, reason, created_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$3,$7)
+		ON CONFLICT DO NOTHING
+	`, uuid.New(), id, models.CreditLedgerTypeSubscriptionGrant, "initial_grant",
+		[]byte(`{"grant":"initial"}`), 100, now)
+	if err != nil {
+		return models.User{}, fmt.Errorf("grant initial credits: %w", err)
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return models.User{}, fmt.Errorf("commit ensure user: %w", err)
 	}
 	return models.User{ID: id, CreatedAt: now, UpdatedAt: now}, nil
 }

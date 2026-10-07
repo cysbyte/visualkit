@@ -277,7 +277,7 @@ struct MockBackendAPIClient: BackendAPIClient {
     func deleteCreation(id: UUID) async throws {}
     func listTemplates() async throws -> [Template] { Template.catalog }
     func getBalance() async throws -> CreditBalance { CreditBalance(balance: 0) }
-    func estimate(templateID: UUID, aspectRatio: AspectRatio) async throws -> CreditEstimate { CreditEstimate(estimatedCredits: 80) }
+    func estimate(templateID: UUID, aspectRatio: AspectRatio) async throws -> CreditEstimate { CreditEstimate(estimatedCredits: 10) }
 
     func analyzeReference(_ request: ImageAnalysisRequest) async throws -> VisualDNA {
         try await Task.sleep(for: .milliseconds(500))

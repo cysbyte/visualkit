@@ -103,7 +103,7 @@ func TestGenerationEstimateRequiresTemplateID(t *testing.T) {
 		Config: config.Config{
 			AuthMode:             "development",
 			DevelopmentUserID:    userID.String(),
-			GenerationCreditCost: 80,
+			GenerationCreditCost: 10,
 		},
 		Services: services.Set{
 			Users: analysisHTTPUsers{},
@@ -124,7 +124,7 @@ func TestGenerationReturnsPaymentRequiredWhenCreditsAreInsufficient(t *testing.T
 		Config: config.Config{
 			AuthMode:             "development",
 			DevelopmentUserID:    userID.String(),
-			GenerationCreditCost: 80,
+			GenerationCreditCost: 10,
 		},
 		Services: services.Set{
 			Users:     analysisHTTPUsers{},

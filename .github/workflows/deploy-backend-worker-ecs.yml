@@ -43,6 +43,7 @@ env:
   WORKER_SERVICE: ${{ vars.WORKER_SERVICE || 'visualkit-staging-worker' }}
   API_TASK_FAMILY: ${{ vars.API_TASK_FAMILY || 'visualkit-staging-api' }}
   WORKER_TASK_FAMILY: ${{ vars.WORKER_TASK_FAMILY || 'visualkit-staging-worker' }}
+  MIGRATION_TASK_FAMILY: ${{ vars.MIGRATION_TASK_FAMILY || 'visualkit-staging-migrate' }}
   API_DESIRED_COUNT: ${{ vars.API_DESIRED_COUNT || '1' }}
   API_MIN_CAPACITY: ${{ vars.API_MIN_CAPACITY || '1' }}
   API_MAX_CAPACITY: ${{ vars.API_MAX_CAPACITY || '1' }}
@@ -62,7 +63,7 @@ env:
   IMAGE_GENERATION_PROVIDER: ${{ vars.IMAGE_GENERATION_PROVIDER || 'mock' }}
   IMAGE_GENERATION_ENDPOINT: ${{ vars.IMAGE_GENERATION_ENDPOINT }}
   IMAGE_GENERATION_MODEL: ${{ vars.IMAGE_GENERATION_MODEL }}
-  GENERATION_CREDIT_COST: ${{ vars.GENERATION_CREDIT_COST || '80' }}
+  GENERATION_CREDIT_COST: ${{ vars.GENERATION_CREDIT_COST || '10' }}
   WORKER_CONCURRENCY: ${{ vars.WORKER_CONCURRENCY || '4' }}
   WORKER_PROVIDER_TIMEOUT: ${{ vars.WORKER_PROVIDER_TIMEOUT || '2m' }}
   WORKER_MAX_ATTEMPTS: ${{ vars.WORKER_MAX_ATTEMPTS || '3' }}
@@ -253,6 +254,7 @@ jobs:
             CPU="$cpu" \
             MEMORY="$memory" \
             LOG_GROUP="$log_group" \
+            CONTAINER_ENTRYPOINT="${CONTAINER_ENTRYPOINT:-}" \
             DATABASE_URL_SECRET_ARN="$DATABASE_URL_SECRET_ARN" \
             VISION_API_KEY_SECRET_ARN="$VISION_API_KEY_SECRET_ARN" \
             IMAGE_GENERATION_API_KEY_SECRET_ARN="$IMAGE_GENERATION_API_KEY_SECRET_ARN" \
@@ -317,6 +319,10 @@ jobs:
                   },
                 }],
               };
+
+              if (process.env.CONTAINER_ENTRYPOINT) {
+                task.containerDefinitions[0].entryPoint = [process.env.CONTAINER_ENTRYPOINT];
+              }
 
               if (process.env.ECS_TASK_ROLE_ARN) {
                 task.taskRoleArn = process.env.ECS_TASK_ROLE_ARN;
@@ -391,6 +397,58 @@ jobs:
               --max-capacity "$max_capacity" >/dev/null
           }
 
+          run_migrations() {
+            local task_definition_arn="$1"
+            local network_configuration
+            network_configuration="$(node --input-type=module -e '
+              const subnets = process.env.ECS_SUBNETS.split(",").map((item) => item.trim()).filter(Boolean);
+              const securityGroups = process.env.ECS_SECURITY_GROUPS.split(",").map((item) => item.trim()).filter(Boolean);
+              process.stdout.write(JSON.stringify({
+                awsvpcConfiguration: {
+                  subnets,
+                  securityGroups,
+                  assignPublicIp: process.env.ECS_ASSIGN_PUBLIC_IP || "ENABLED",
+                },
+              }));
+            ')"
+
+            local task_arn
+            task_arn="$(aws ecs run-task \
+              --region "$AWS_REGION" \
+              --cluster "$ECS_CLUSTER" \
+              --launch-type FARGATE \
+              --task-definition "$task_definition_arn" \
+              --network-configuration "$network_configuration" \
+              --query 'tasks[0].taskArn' \
+              --output text)"
+
+            test -n "$task_arn" && test "$task_arn" != "None" || {
+              echo "Migration task did not start" >&2
+              exit 1
+            }
+            aws ecs wait tasks-stopped \
+              --region "$AWS_REGION" \
+              --cluster "$ECS_CLUSTER" \
+              --tasks "$task_arn"
+
+            local exit_code
+            exit_code="$(aws ecs describe-tasks \
+              --region "$AWS_REGION" \
+              --cluster "$ECS_CLUSTER" \
+              --tasks "$task_arn" \
+              --query 'tasks[0].containers[?name==`api`].exitCode | [0]' \
+              --output text)"
+            test "$exit_code" = "0" || {
+              aws ecs describe-tasks \
+                --region "$AWS_REGION" \
+                --cluster "$ECS_CLUSTER" \
+                --tasks "$task_arn" \
+                --query 'tasks[0].containers[?name==`api`].[exitCode,reason] | [0]' \
+                --output json >&2
+              exit 1
+            }
+          }
+
           api_log_group="/ecs/${PROJECT_NAME}-${ENVIRONMENT}-api"
           worker_log_group="/ecs/${PROJECT_NAME}-${ENVIRONMENT}-worker"
           ensure_log_group "$api_log_group"
@@ -398,9 +456,14 @@ jobs:
 
           register_task_definition "$API_TASK_FAMILY" api "$API_IMAGE" "$API_CPU" "$API_MEMORY" "$api_log_group" api-task-definition-arn.txt
           register_task_definition "$WORKER_TASK_FAMILY" worker "$WORKER_IMAGE" "$WORKER_CPU" "$WORKER_MEMORY" "$worker_log_group" worker-task-definition-arn.txt
+          CONTAINER_ENTRYPOINT="/app/visualkit-migrate" \
+            register_task_definition "$MIGRATION_TASK_FAMILY" api "$API_IMAGE" "$API_CPU" "$API_MEMORY" "$api_log_group" migration-task-definition-arn.txt
 
           api_task_definition_arn="$(cat api-task-definition-arn.txt)"
           worker_task_definition_arn="$(cat worker-task-definition-arn.txt)"
+          migration_task_definition_arn="$(cat migration-task-definition-arn.txt)"
+
+          run_migrations "$migration_task_definition_arn"
 
           deploy_service "$API_SERVICE" "$api_task_definition_arn" "$API_DESIRED_COUNT"
           deploy_service "$WORKER_SERVICE" "$worker_task_definition_arn" "$WORKER_DESIRED_COUNT"
