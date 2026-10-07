@@ -128,6 +128,25 @@ func (server *Server) templates(response http.ResponseWriter, request *http.Requ
 		server.handleError(response, err)
 		return
 	}
+	thumbnailCount := 0
+	featuredCount := 0
+	firstSlugs := make([]string, 0, 5)
+	for _, template := range templates {
+		if template.ThumbnailURL != "" {
+			thumbnailCount++
+		}
+		if template.Featured {
+			featuredCount++
+		}
+		if len(firstSlugs) < cap(firstSlugs) {
+			firstSlugs = append(firstSlugs, template.Slug)
+		}
+	}
+	server.logger.Info("templates listed",
+		slog.Int("count", len(templates)),
+		slog.Int("thumbnail_count", thumbnailCount),
+		slog.Int("featured_count", featuredCount),
+		slog.Any("first_slugs", firstSlugs))
 	api.WriteData(response, http.StatusOK, templates)
 }
 

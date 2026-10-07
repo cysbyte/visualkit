@@ -268,7 +268,10 @@ final class GoAPIClient: BackendAPIClient, @unchecked Sendable {
             path: "/v1/templates",
             operation: .request
         )
-        return values.map(\.localTemplate)
+        let templates = values.map(\.localTemplate)
+        let thumbnailCount = templates.filter { $0.thumbnailURL != nil || $0.previewImageName != nil }.count
+        print("[VisualKit] API templates decoded count=\(templates.count) thumbnails=\(thumbnailCount) firstSlugs=\(values.prefix(5).map(\.slug))")
+        return templates
     }
 
     func getBalance() async throws -> CreditBalance {
@@ -323,16 +326,21 @@ final class GoAPIClient: BackendAPIClient, @unchecked Sendable {
 
     private func backendTemplateID(for template: Template) async throws -> UUID? {
         if let backendID = template.backendID {
+            print("[VisualKit] Template backendID direct id=\(template.id) backendID=\(backendID.uuidString)")
             return backendID
         }
         let templates = try await listTemplates()
-        return templates.first { candidate in
+        let exactMatch = templates.first { candidate in
             candidate.id == template.id
                 || candidate.id == template.backendSlugFallback
                 || candidate.name.caseInsensitiveCompare(template.name) == .orderedSame
-        }?.backendID ?? templates.first {
+        }
+        let categoryMatch = templates.first {
             $0.category == template.category
-        }?.backendID
+        }
+        let resolved = exactMatch?.backendID ?? categoryMatch?.backendID
+        print("[VisualKit] Template backendID resolved localID=\(template.id) fallback=\(template.backendSlugFallback ?? "nil") category=\(template.category.title) exact=\(exactMatch?.id ?? "nil") categoryMatch=\(categoryMatch?.id ?? "nil") backendID=\(resolved?.uuidString ?? "nil") remoteCount=\(templates.count)")
+        return resolved
     }
 
     private func makeRequest(

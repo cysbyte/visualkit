@@ -48,6 +48,7 @@ final class AppState: ObservableObject {
         self.creationRepository = creationRepository
         creations = (try? creationRepository.fetchAll()) ?? Creation.samples
         savedStyles = (try? styleRepository.fetchAll()) ?? SavedStyle.samples
+        print("[VisualKit] AppState initialized remoteAPI=\(remoteClient != nil) templates=\(templates.count)")
 
         if remoteClient != nil {
             Task { [weak self] in
@@ -69,8 +70,20 @@ final class AppState: ObservableObject {
         async let remoteStyles = remoteClient.listStyles()
         async let remoteCreations = remoteClient.listCreations(limit: 30, cursor: nil)
 
-        if let values = try? await remoteTemplates, !values.isEmpty {
-            templates = values
+        do {
+            let values = try await remoteTemplates
+            let thumbnailCount = values.filter { $0.thumbnailURL != nil || $0.previewImageName != nil }.count
+            let categorySummary = Dictionary(grouping: values, by: \.category.title)
+                .mapValues(\.count)
+                .sorted { $0.key < $1.key }
+                .map { "\($0.key)=\($0.value)" }
+                .joined(separator: ", ")
+            print("[VisualKit] Remote templates loaded count=\(values.count) thumbnails=\(thumbnailCount) categories=[\(categorySummary)] first=\(values.prefix(5).map(\.id))")
+            if !values.isEmpty {
+                templates = values
+            }
+        } catch {
+            print("[VisualKit] Remote templates failed error=\(error)")
         }
         if let values = try? await remoteStyles {
             savedStyles = values
@@ -193,6 +206,7 @@ final class AppState: ObservableObject {
     }
 
     func useTemplate(_ template: Template) {
+        print("[VisualKit] Use template id=\(template.id) backendID=\(template.backendID?.uuidString ?? "nil") name=\(template.name) thumbnailURL=\(template.thumbnailURL?.absoluteString ?? "nil") preview=\(template.previewImageName ?? "nil")")
         var draft = GenerationDraft()
         draft.selectedTemplate = template
         draft.prompt = template.promptInstructions
