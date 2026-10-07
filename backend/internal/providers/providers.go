@@ -303,7 +303,7 @@ func (provider OpenAIImageGenerationProvider) GenerateImage(
 	}
 	model := strings.TrimSpace(provider.Model)
 	if model == "" {
-		model = "gpt-image-1"
+		model = "gpt-image-2"
 	}
 	encoded, err := json.Marshal(openAIImageGenerationRequest{
 		Model:          model,

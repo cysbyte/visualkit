@@ -647,18 +647,24 @@ private struct BackendTemplate: Decodable {
     }
 
     var localTemplate: Template {
-        Template(
-            id: slug.isEmpty ? id.uuidString : slug,
+        let localID = slug.isEmpty ? id.uuidString : slug
+        let catalogTemplate = Template.catalog.first { $0.id == localID }
+        return Template(
+            id: localID,
             backendID: id,
             name: name,
             description: description,
             category: localCategory,
-            thumbnail: "sparkles",
+            thumbnail: catalogTemplate?.thumbnail ?? "sparkles",
             promptInstructions: promptDirectives?.joined(separator: ", ") ?? "",
             recommendedAspectRatio: AspectRatio(
                 rawValue: defaultSettings?.aspectRatio.rawValue ?? recommendedAspectRatio ?? "1:1"
             ) ?? .square,
-            generationSettings: defaultSettings
+            generationSettings: defaultSettings,
+            styles: catalogTemplate?.styles ?? [],
+            scenes: catalogTemplate?.scenes ?? [],
+            sourceURL: catalogTemplate.flatMap(\.sourceURL),
+            previewImageName: catalogTemplate.flatMap(\.previewImageName)
         )
     }
 
