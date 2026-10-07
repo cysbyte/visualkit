@@ -73,7 +73,7 @@ struct HomeView: View {
 
     @ViewBuilder
     private var featuredTemplateSection: some View {
-        if let template = appState.templates.first {
+        if let template = appState.templates.first(where: { $0.featured == true }) ?? appState.templates.first {
             FeaturedTemplateCard(template: template) {
                 openCreate(with: template)
             }

@@ -252,14 +252,30 @@ func (repository postgresAssets) SaveVisualDNA(
 
 type postgresTemplates struct{ pool *pgxpool.Pool }
 
+const templateSelectColumns = `
+	id, slug, name, description, category, prompt_directives,
+	default_settings, preview_asset_id, is_active,
+	source_case_id, source_label, source_url, github_url, source_image_path, image_alt,
+	styles, scenes, featured,
+	prompt_instructions, recommended_aspect_ratio, generation_settings,
+	thumbnail_url, created_at, updated_at
+`
+
+const joinedTemplateSelectColumns = `
+	t.id, t.slug, t.name, t.description, t.category,
+	t.prompt_directives, t.default_settings, t.preview_asset_id, t.is_active,
+	t.source_case_id, t.source_label, t.source_url, t.github_url, t.source_image_path, t.image_alt,
+	t.styles, t.scenes, t.featured,
+	t.prompt_instructions, t.recommended_aspect_ratio,
+	t.generation_settings, t.thumbnail_url, t.created_at, t.updated_at
+`
+
 func (repository postgresTemplates) List(ctx context.Context) ([]models.Template, error) {
-	rows, err := repository.pool.Query(ctx, `
-		SELECT id, slug, name, description, category, prompt_directives,
-		       default_settings, preview_asset_id, is_active,
-		       prompt_instructions, recommended_aspect_ratio, generation_settings,
-		       thumbnail_url, created_at, updated_at
-		FROM templates WHERE is_active = TRUE ORDER BY name
-	`)
+	rows, err := repository.pool.Query(ctx,
+		`SELECT `+templateSelectColumns+`
+		FROM templates WHERE is_active = TRUE
+		ORDER BY featured DESC, source_case_id DESC NULLS LAST, name`,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("list templates: %w", err)
 	}
@@ -280,13 +296,11 @@ func (repository postgresTemplates) List(ctx context.Context) ([]models.Template
 }
 
 func (repository postgresTemplates) Get(ctx context.Context, id uuid.UUID) (models.Template, error) {
-	row := repository.pool.QueryRow(ctx, `
-		SELECT id, slug, name, description, category, prompt_directives,
-		       default_settings, preview_asset_id, is_active,
-		       prompt_instructions, recommended_aspect_ratio, generation_settings,
-		       thumbnail_url, created_at, updated_at
-		FROM templates WHERE id = $1 AND is_active = TRUE
-	`, id)
+	row := repository.pool.QueryRow(ctx,
+		`SELECT `+templateSelectColumns+`
+		FROM templates WHERE id = $1 AND is_active = TRUE`,
+		id,
+	)
 	template, err := scanTemplate(row)
 	if err != nil {
 		return models.Template{}, normalizeNotFound(err, "template")
@@ -300,11 +314,14 @@ type rowScanner interface {
 
 func scanTemplate(row rowScanner) (models.Template, error) {
 	var template models.Template
-	var promptDirectives, defaultSettings, generationSettings []byte
+	var promptDirectives, defaultSettings, styles, scenes, generationSettings []byte
 	err := row.Scan(
 		&template.ID, &template.Slug, &template.Name, &template.Description,
 		&template.Category, &promptDirectives, &defaultSettings,
 		&template.PreviewAssetID, &template.IsActive,
+		&template.SourceCaseID, &template.SourceLabel, &template.SourceURL,
+		&template.GitHubURL, &template.SourceImagePath, &template.ImageAlt, &styles, &scenes,
+		&template.Featured,
 		&template.PromptInstructions, &template.RecommendedAspectRatio,
 		&generationSettings, &template.ThumbnailURL, &template.CreatedAt,
 		&template.UpdatedAt,
@@ -320,6 +337,16 @@ func scanTemplate(row rowScanner) (models.Template, error) {
 	if len(defaultSettings) > 0 {
 		if err := json.Unmarshal(defaultSettings, &template.DefaultSettings); err != nil {
 			return models.Template{}, fmt.Errorf("decode template default settings: %w", err)
+		}
+	}
+	if len(styles) > 0 {
+		if err := json.Unmarshal(styles, &template.Styles); err != nil {
+			return models.Template{}, fmt.Errorf("decode template styles: %w", err)
+		}
+	}
+	if len(scenes) > 0 {
+		if err := json.Unmarshal(scenes, &template.Scenes); err != nil {
+			return models.Template{}, fmt.Errorf("decode template scenes: %w", err)
 		}
 	}
 	if len(generationSettings) > 0 {
@@ -673,10 +700,7 @@ func (repository postgresCreations) List(ctx context.Context, userID uuid.UUID) 
 		       c.resolved_generation_prompt, c.visual_dna,
 		       c.preservation_settings, c.generation_settings, c.status,
 		       c.failure_message, c.created_at, c.updated_at,
-			t.id, t.slug, t.name, t.description, t.category,
-			t.prompt_directives, t.default_settings, t.preview_asset_id, t.is_active,
-			t.prompt_instructions, t.recommended_aspect_ratio,
-			t.generation_settings, t.thumbnail_url, t.created_at, t.updated_at
+			`+joinedTemplateSelectColumns+`
 		FROM creations c
 		LEFT JOIN templates t ON t.id = c.template_id
 		WHERE c.user_id = $1
@@ -720,10 +744,7 @@ func (repository postgresCreations) ListPage(
 		       c.resolved_generation_prompt, c.visual_dna,
 		       c.preservation_settings, c.generation_settings, c.status,
 		       c.failure_message, c.created_at, c.updated_at,
-			t.id, t.slug, t.name, t.description, t.category,
-			t.prompt_directives, t.default_settings, t.preview_asset_id, t.is_active,
-			t.prompt_instructions, t.recommended_aspect_ratio,
-			t.generation_settings, t.thumbnail_url, t.created_at, t.updated_at
+			`+joinedTemplateSelectColumns+`
 		FROM creations c
 		LEFT JOIN templates t ON t.id = c.template_id
 		WHERE c.user_id = $1
@@ -765,10 +786,7 @@ func (repository postgresCreations) Get(ctx context.Context, userID, id uuid.UUI
 		       c.resolved_generation_prompt, c.visual_dna,
 		       c.preservation_settings, c.generation_settings, c.status,
 		       c.failure_message, c.created_at, c.updated_at,
-			t.id, t.slug, t.name, t.description, t.category,
-			t.prompt_directives, t.default_settings, t.preview_asset_id, t.is_active,
-			t.prompt_instructions, t.recommended_aspect_ratio,
-			t.generation_settings, t.thumbnail_url, t.created_at, t.updated_at
+			`+joinedTemplateSelectColumns+`
 		FROM creations c
 		LEFT JOIN templates t ON t.id = c.template_id
 		WHERE c.user_id = $1 AND c.id = $2
@@ -898,10 +916,13 @@ func scanCreation(row rowScanner) (models.Creation, error) {
 	var creation models.Creation
 	var visualDNA, preservation, generationSettings, templateSettings []byte
 	var templateID, templatePreviewAssetID *uuid.UUID
+	var templateSourceCaseID *int
 	var templateSlug, templateName, templateDescription, templateCategory,
+		templateSourceLabel, templateSourceURL, templateGitHubURL, templateSourceImagePath, templateImageAlt,
 		templateInstructions, templateAspectRatio, templateThumbnail *string
-	var templateDirectives, templateDefaults []byte
+	var templateDirectives, templateDefaults, templateStyles, templateScenes []byte
 	var templateActive *bool
+	var templateFeatured *bool
 	var templateCreatedAt, templateUpdatedAt *time.Time
 	err := row.Scan(
 		&creation.ID, &creation.UserID, &creation.GeneratedAssetID,
@@ -912,8 +933,10 @@ func scanCreation(row rowScanner) (models.Creation, error) {
 		&creation.FailureMessage, &creation.CreatedAt, &creation.UpdatedAt,
 		&templateID, &templateSlug, &templateName, &templateDescription,
 		&templateCategory, &templateDirectives, &templateDefaults,
-		&templatePreviewAssetID, &templateActive, &templateInstructions,
-		&templateAspectRatio, &templateSettings, &templateThumbnail,
+		&templatePreviewAssetID, &templateActive,
+		&templateSourceCaseID, &templateSourceLabel, &templateSourceURL,
+		&templateGitHubURL, &templateSourceImagePath, &templateImageAlt, &templateStyles, &templateScenes,
+		&templateFeatured, &templateInstructions, &templateAspectRatio, &templateSettings, &templateThumbnail,
 		&templateCreatedAt, &templateUpdatedAt,
 	)
 	if err != nil {
@@ -947,6 +970,15 @@ func scanCreation(row rowScanner) (models.Creation, error) {
 		if templateActive != nil {
 			creation.Template.IsActive = *templateActive
 		}
+		creation.Template.SourceCaseID = templateSourceCaseID
+		creation.Template.SourceLabel = valueOrEmpty(templateSourceLabel)
+		creation.Template.SourceURL = valueOrEmpty(templateSourceURL)
+		creation.Template.GitHubURL = valueOrEmpty(templateGitHubURL)
+		creation.Template.SourceImagePath = valueOrEmpty(templateSourceImagePath)
+		creation.Template.ImageAlt = valueOrEmpty(templateImageAlt)
+		if templateFeatured != nil {
+			creation.Template.Featured = *templateFeatured
+		}
 		creation.Template.PromptInstructions = valueOrEmpty(templateInstructions)
 		creation.Template.RecommendedAspectRatio = valueOrEmpty(templateAspectRatio)
 		creation.Template.ThumbnailURL = valueOrEmpty(templateThumbnail)
@@ -956,15 +988,25 @@ func scanCreation(row rowScanner) (models.Creation, error) {
 			if err := json.Unmarshal(templateSettings, &creation.Template.GenerationSettings); err != nil {
 				return models.Creation{}, fmt.Errorf("decode creation template settings: %w", err)
 			}
-			if len(templateDirectives) > 0 {
-				if err := json.Unmarshal(templateDirectives, &creation.Template.PromptDirectives); err != nil {
-					return models.Creation{}, fmt.Errorf("decode creation template directives: %w", err)
-				}
+		}
+		if len(templateDirectives) > 0 {
+			if err := json.Unmarshal(templateDirectives, &creation.Template.PromptDirectives); err != nil {
+				return models.Creation{}, fmt.Errorf("decode creation template directives: %w", err)
 			}
-			if len(templateDefaults) > 0 {
-				if err := json.Unmarshal(templateDefaults, &creation.Template.DefaultSettings); err != nil {
-					return models.Creation{}, fmt.Errorf("decode creation template defaults: %w", err)
-				}
+		}
+		if len(templateStyles) > 0 {
+			if err := json.Unmarshal(templateStyles, &creation.Template.Styles); err != nil {
+				return models.Creation{}, fmt.Errorf("decode creation template styles: %w", err)
+			}
+		}
+		if len(templateScenes) > 0 {
+			if err := json.Unmarshal(templateScenes, &creation.Template.Scenes); err != nil {
+				return models.Creation{}, fmt.Errorf("decode creation template scenes: %w", err)
+			}
+		}
+		if len(templateDefaults) > 0 {
+			if err := json.Unmarshal(templateDefaults, &creation.Template.DefaultSettings); err != nil {
+				return models.Creation{}, fmt.Errorf("decode creation template defaults: %w", err)
 			}
 		}
 	}

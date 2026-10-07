@@ -74,6 +74,26 @@ func TestPromptBuilderIncludesOnlyPreservedVisualDNA(t *testing.T) {
 	}
 }
 
+func TestPromptBuilderDoesNotDuplicateCasePromptAsDirective(t *testing.T) {
+	prompt := "Create a product poster for [PRODUCT]."
+	template := testPromptTemplate("Case Template", []string{prompt})
+	intent, err := (PromptBuilder{}).BuildGenerationIntent(models.GenerationDraft{
+		Prompt:             prompt,
+		TemplateID:         template.ID,
+		GenerationSettings: models.GenerationSettings{AspectRatio: "1:1"},
+	}, template)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := (PromptBuilder{}).BuildProviderPrompt(intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(resolved, "Template directives:") {
+		t.Fatalf("resolved prompt = %q, should not duplicate case prompt as directive", resolved)
+	}
+}
+
 func TestPromptBuilderAppliesTemplateDefaultsWithoutOverwritingAspectRatio(t *testing.T) {
 	template := testPromptTemplate("Portrait", []string{"portrait framing"})
 	template.DefaultSettings = models.GenerationSettings{

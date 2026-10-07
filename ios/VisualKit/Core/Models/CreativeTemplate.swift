@@ -127,6 +127,12 @@ struct Template: Identifiable, Hashable, Codable, Sendable {
     let styles: [String]
     let scenes: [String]
     let sourceURL: URL?
+    let sourceLabel: String?
+    let githubURL: URL?
+    let sourceCaseID: Int?
+    let sourceImagePath: String?
+    let imageAlt: String?
+    let featured: Bool
     let thumbnailURL: URL?
     let previewImageName: String?
 
@@ -214,6 +220,12 @@ struct Template: Identifiable, Hashable, Codable, Sendable {
         styles: [String] = [],
         scenes: [String] = [],
         sourceURL: URL? = nil,
+        sourceLabel: String? = nil,
+        githubURL: URL? = nil,
+        sourceCaseID: Int? = nil,
+        sourceImagePath: String? = nil,
+        imageAlt: String? = nil,
+        featured: Bool = false,
         thumbnailURL: URL? = nil,
         previewImageName: String? = nil
     ) {
@@ -229,6 +241,12 @@ struct Template: Identifiable, Hashable, Codable, Sendable {
         self.styles = styles
         self.scenes = scenes
         self.sourceURL = sourceURL
+        self.sourceLabel = sourceLabel
+        self.githubURL = githubURL
+        self.sourceCaseID = sourceCaseID
+        self.sourceImagePath = sourceImagePath
+        self.imageAlt = imageAlt
+        self.featured = featured
         self.thumbnailURL = thumbnailURL
         self.previewImageName = previewImageName
     }

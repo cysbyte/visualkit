@@ -644,9 +644,19 @@ private struct BackendTemplate: Decodable {
     let description: String
     let category: String
     let promptDirectives: [String]?
+    let promptInstructionsValue: String?
     let defaultSettings: GenerationSettings?
     let recommendedAspectRatio: String?
     let thumbnailURL: String?
+    let sourceCaseID: Int?
+    let sourceLabel: String?
+    let sourceURL: String?
+    let githubURL: String?
+    let sourceImagePath: String?
+    let imageAlt: String?
+    let styles: [String]?
+    let scenes: [String]?
+    let featured: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -655,32 +665,89 @@ private struct BackendTemplate: Decodable {
         case description
         case category
         case promptDirectives = "prompt_directives"
+        case promptInstructionsValue = "promptInstructions"
         case defaultSettings = "default_settings"
         case recommendedAspectRatio = "recommended_aspect_ratio"
         case thumbnailURL = "thumbnailUrl"
+        case sourceCaseID = "source_case_id"
+        case sourceLabel = "source_label"
+        case sourceURL = "source_url"
+        case githubURL = "github_url"
+        case sourceImagePath = "source_image_path"
+        case imageAlt = "image_alt"
+        case sourceCaseIDCamel = "sourceCaseID"
+        case sourceLabelCamel = "sourceLabel"
+        case sourceURLCamel = "sourceURL"
+        case githubURLCamel = "githubURL"
+        case sourceImagePathCamel = "sourceImagePath"
+        case imageAltCamel = "imageAlt"
+        case styles
+        case scenes
+        case featured
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        slug = try container.decode(String.self, forKey: .slug)
+        name = try container.decode(String.self, forKey: .name)
+        description = try container.decode(String.self, forKey: .description)
+        category = try container.decode(String.self, forKey: .category)
+        promptDirectives = try container.decodeIfPresent([String].self, forKey: .promptDirectives)
+        promptInstructionsValue = try container.decodeIfPresent(String.self, forKey: .promptInstructionsValue)
+        defaultSettings = try container.decodeIfPresent(GenerationSettings.self, forKey: .defaultSettings)
+        recommendedAspectRatio = try container.decodeIfPresent(String.self, forKey: .recommendedAspectRatio)
+        thumbnailURL = try container.decodeIfPresent(String.self, forKey: .thumbnailURL)
+        sourceCaseID = try container.decodeIfPresent(Int.self, forKey: .sourceCaseID)
+            ?? container.decodeIfPresent(Int.self, forKey: .sourceCaseIDCamel)
+        sourceLabel = try container.decodeIfPresent(String.self, forKey: .sourceLabel)
+            ?? container.decodeIfPresent(String.self, forKey: .sourceLabelCamel)
+        sourceURL = try container.decodeIfPresent(String.self, forKey: .sourceURL)
+            ?? container.decodeIfPresent(String.self, forKey: .sourceURLCamel)
+        githubURL = try container.decodeIfPresent(String.self, forKey: .githubURL)
+            ?? container.decodeIfPresent(String.self, forKey: .githubURLCamel)
+        sourceImagePath = try container.decodeIfPresent(String.self, forKey: .sourceImagePath)
+            ?? container.decodeIfPresent(String.self, forKey: .sourceImagePathCamel)
+        imageAlt = try container.decodeIfPresent(String.self, forKey: .imageAlt)
+            ?? container.decodeIfPresent(String.self, forKey: .imageAltCamel)
+        styles = try container.decodeIfPresent([String].self, forKey: .styles)
+        scenes = try container.decodeIfPresent([String].self, forKey: .scenes)
+        featured = try container.decodeIfPresent(Bool.self, forKey: .featured)
     }
 
     var localTemplate: Template {
         let localID = slug.isEmpty ? id.uuidString : slug
-        let catalogTemplate = Template.catalog.first { $0.id == localID }
         return Template(
             id: localID,
             backendID: id,
             name: name,
             description: description,
             category: localCategory,
-            thumbnail: catalogTemplate?.thumbnail ?? "sparkles",
-            promptInstructions: promptDirectives?.joined(separator: ", ") ?? "",
+            thumbnail: thumbnailSymbol,
+            promptInstructions: promptInstructions,
             recommendedAspectRatio: AspectRatio(
                 rawValue: defaultSettings?.aspectRatio.rawValue ?? recommendedAspectRatio ?? "1:1"
             ) ?? .square,
             generationSettings: defaultSettings,
-            styles: catalogTemplate?.styles ?? [],
-            scenes: catalogTemplate?.scenes ?? [],
-            sourceURL: catalogTemplate.flatMap(\.sourceURL),
-            thumbnailURL: remoteThumbnailURL ?? catalogTemplate.flatMap(\.thumbnailURL),
-            previewImageName: catalogTemplate.flatMap(\.previewImageName)
+            styles: styles ?? [],
+            scenes: scenes ?? [],
+            sourceURL: sourceURL.flatMap(URL.init(string:)),
+            sourceLabel: emptyToNil(sourceLabel),
+            githubURL: githubURL.flatMap(URL.init(string:)),
+            sourceCaseID: sourceCaseID,
+            sourceImagePath: emptyToNil(sourceImagePath),
+            imageAlt: emptyToNil(imageAlt),
+            featured: featured ?? false,
+            thumbnailURL: remoteThumbnailURL,
+            previewImageName: nil
         )
+    }
+
+    private var promptInstructions: String {
+        if let promptDirectives, !promptDirectives.isEmpty {
+            return promptDirectives.joined(separator: "\n\n")
+        }
+        return promptInstructionsValue ?? ""
     }
 
     private var remoteThumbnailURL: URL? {
@@ -722,6 +789,32 @@ private struct BackendTemplate: Decodable {
         default:
             return .otherUseCases
         }
+    }
+
+    private var thumbnailSymbol: String {
+        switch localCategory {
+        case .postersTypography: return "textformat.size"
+        case .productsEcommerce: return "cube.transparent"
+        case .brandLogos: return "seal"
+        case .uiInterfaces: return "macwindow"
+        case .chartsInfographics: return "chart.xyaxis.line"
+        case .architectureSpaces: return "house.lodge"
+        case .photographyRealism: return "camera.aperture"
+        case .illustrationArt: return "paintpalette"
+        case .charactersPeople: return "person.crop.square"
+        case .scenesStorytelling: return "film"
+        case .historyClassicalThemes: return "building.columns"
+        case .documentsPublishing: return "doc.richtext"
+        case .otherUseCases: return "sparkles"
+        }
+    }
+
+    private func emptyToNil(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
     }
 }
 

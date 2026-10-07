@@ -89,6 +89,15 @@ type Template struct {
 	DefaultSettings  GenerationSettings `json:"default_settings"`
 	PreviewAssetID   *uuid.UUID         `json:"preview_asset_id,omitempty"`
 	IsActive         bool               `json:"is_active"`
+	SourceCaseID     *int               `json:"source_case_id,omitempty"`
+	SourceLabel      string             `json:"source_label,omitempty"`
+	SourceURL        string             `json:"source_url,omitempty"`
+	GitHubURL        string             `json:"github_url,omitempty"`
+	SourceImagePath  string             `json:"source_image_path,omitempty"`
+	ImageAlt         string             `json:"image_alt,omitempty"`
+	Styles           []string           `json:"styles,omitempty"`
+	Scenes           []string           `json:"scenes,omitempty"`
+	Featured         bool               `json:"featured"`
 	// Legacy fields are kept while older clients and migrations are upgraded.
 	PromptInstructions     string             `json:"promptInstructions"`
 	RecommendedAspectRatio string             `json:"recommendedAspectRatio"`

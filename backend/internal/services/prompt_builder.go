@@ -50,8 +50,8 @@ func (builder PromptBuilder) BuildProviderPrompt(intent models.GenerationIntent)
 		return "", fmt.Errorf("prompt is required")
 	}
 	sections := []string{strings.TrimSpace(intent.OriginalPrompt)}
-	if len(intent.PromptDirectives) > 0 {
-		sections = append(sections, "Template directives: "+joinValues(intent.PromptDirectives))
+	if directives := promptDirectivesForProvider(intent.OriginalPrompt, intent.PromptDirectives); len(directives) > 0 {
+		sections = append(sections, "Template directives: "+joinValues(directives))
 	}
 	if intent.VisualDNA != nil {
 		visualSection := visualDNASection(*intent.VisualDNA)
@@ -60,6 +60,19 @@ func (builder PromptBuilder) BuildProviderPrompt(intent models.GenerationIntent)
 		}
 	}
 	return strings.Join(sections, "\n\n"), nil
+}
+
+func promptDirectivesForProvider(originalPrompt string, directives []string) []string {
+	trimmedPrompt := strings.TrimSpace(originalPrompt)
+	result := make([]string, 0, len(directives))
+	for _, directive := range directives {
+		directive = strings.TrimSpace(directive)
+		if directive == "" || directive == trimmedPrompt {
+			continue
+		}
+		result = append(result, directive)
+	}
+	return result
 }
 
 func validateDraft(draft models.GenerationDraft) error {
