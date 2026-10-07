@@ -53,9 +53,13 @@ func NewSet(
 		configuredQueue = jobQueue[0]
 	}
 	return Set{
-		Users:       repositorySet.Users,
-		Assets:      repositorySet.Assets,
-		Templates:   repositorySet.Templates,
+		Users:  repositorySet.Users,
+		Assets: repositorySet.Assets,
+		Templates: TemplateService{
+			Templates: repositorySet.Templates,
+			Storage:   configuredStorage,
+			Config:    configuration,
+		},
 		Styles:      repositorySet.Styles,
 		Jobs:        repositorySet.Jobs,
 		Creations:   repositorySet.Creations,
@@ -884,10 +888,50 @@ func timePointer(value time.Time) *time.Time {
 
 type TemplateService struct {
 	Templates repositories.TemplateRepository
+	Storage   storage.ObjectStorage
+	Config    config.Config
 }
 
 func (service TemplateService) List(ctx context.Context) ([]models.Template, error) {
-	return service.Templates.List(ctx)
+	templates, err := service.Templates.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for index := range templates {
+		templates[index].ThumbnailURL = service.templateThumbnailURL(ctx, templates[index].ThumbnailURL)
+	}
+	return templates, nil
+}
+
+func (service TemplateService) Get(ctx context.Context, id uuid.UUID) (models.Template, error) {
+	template, err := service.Templates.Get(ctx, id)
+	if err != nil {
+		return models.Template{}, err
+	}
+	template.ThumbnailURL = service.templateThumbnailURL(ctx, template.ThumbnailURL)
+	return template, nil
+}
+
+func (service TemplateService) templateThumbnailURL(ctx context.Context, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") {
+		return value
+	}
+	objectKey := strings.TrimPrefix(value, "s3://")
+	if service.Config.S3Bucket != "" {
+		objectKey = strings.TrimPrefix(objectKey, service.Config.S3Bucket+"/")
+	}
+	if objectKey == "" || service.Storage == nil {
+		return value
+	}
+	signedURL, err := service.Storage.CreateDownloadURL(ctx, objectKey, service.Config.S3DownloadURLTTL)
+	if err != nil {
+		return value
+	}
+	return signedURL
 }
 
 type StyleService struct {

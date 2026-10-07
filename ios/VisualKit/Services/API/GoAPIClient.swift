@@ -634,6 +634,7 @@ private struct BackendTemplate: Decodable {
     let promptDirectives: [String]?
     let defaultSettings: GenerationSettings?
     let recommendedAspectRatio: String?
+    let thumbnailURL: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -644,6 +645,7 @@ private struct BackendTemplate: Decodable {
         case promptDirectives = "prompt_directives"
         case defaultSettings = "default_settings"
         case recommendedAspectRatio = "recommended_aspect_ratio"
+        case thumbnailURL = "thumbnailUrl"
     }
 
     var localTemplate: Template {
@@ -664,8 +666,19 @@ private struct BackendTemplate: Decodable {
             styles: catalogTemplate?.styles ?? [],
             scenes: catalogTemplate?.scenes ?? [],
             sourceURL: catalogTemplate.flatMap(\.sourceURL),
+            thumbnailURL: remoteThumbnailURL ?? catalogTemplate.flatMap(\.thumbnailURL),
             previewImageName: catalogTemplate.flatMap(\.previewImageName)
         )
+    }
+
+    private var remoteThumbnailURL: URL? {
+        guard let thumbnailURL,
+              let url = URL(string: thumbnailURL),
+              let scheme = url.scheme?.lowercased(),
+              ["http", "https"].contains(scheme) else {
+            return nil
+        }
+        return url
     }
 
     private var localCategory: TemplateCategory {

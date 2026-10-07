@@ -127,6 +127,7 @@ struct Template: Identifiable, Hashable, Codable, Sendable {
     let styles: [String]
     let scenes: [String]
     let sourceURL: URL?
+    let thumbnailURL: URL?
     let previewImageName: String?
 
     var accent: String {
@@ -176,6 +177,7 @@ struct Template: Identifiable, Hashable, Codable, Sendable {
         styles: [String] = [],
         scenes: [String] = [],
         sourceURL: URL? = nil,
+        thumbnailURL: URL? = nil,
         previewImageName: String? = nil
     ) {
         self.id = id
@@ -190,6 +192,7 @@ struct Template: Identifiable, Hashable, Codable, Sendable {
         self.styles = styles
         self.scenes = scenes
         self.sourceURL = sourceURL
+        self.thumbnailURL = thumbnailURL
         self.previewImageName = previewImageName
     }
 

@@ -498,7 +498,9 @@ private struct TemplateArtwork: View {
 
     var body: some View {
         Group {
-            if let previewImageName = template.previewImageName,
+            if let thumbnailURL = template.thumbnailURL {
+                RemoteImageView(url: thumbnailURL)
+            } else if let previewImageName = template.previewImageName,
                UIImage(named: previewImageName) != nil {
                 Image(previewImageName)
                     .resizable()
