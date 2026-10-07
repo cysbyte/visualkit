@@ -42,6 +42,8 @@ final class CreateViewModel: ObservableObject {
         guard let replacement = templates.first(where: {
             $0.id == draft.selectedTemplate.id
         }) ?? templates.first(where: {
+            $0.id == draft.selectedTemplate.backendSlugFallback
+        }) ?? templates.first(where: {
             $0.name.caseInsensitiveCompare(draft.selectedTemplate.name) == .orderedSame
         }) else {
             return

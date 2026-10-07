@@ -142,6 +142,43 @@ struct Template: Identifiable, Hashable, Codable, Sendable {
         scenes.prefix(3).joined(separator: " · ")
     }
 
+    var backendSlugFallback: String? {
+        switch id {
+        case "case-editorial-poster",
+             "case-type-specimen",
+             "case-music-event-poster",
+             "case-editorial-magazine-cover",
+             "case-social-announcement-poster":
+            return "editorial"
+        case "case-studio-product":
+            return "product-photography"
+        case "case-saas-dashboard":
+            return "3d"
+        case "case-isometric-space":
+            return "3d"
+        case "case-character-sheet":
+            return "portrait"
+        case "case-data-infographic":
+            return "minimal"
+        case "case-brand-mark":
+            return "minimal"
+        case "case-realistic-portrait":
+            return "portrait"
+        case "case-story-scene":
+            return "cinematic"
+        case "case-illustrated-cover":
+            return "anime"
+        case "case-archive-document":
+            return "editorial"
+        case "case-classical-remix":
+            return "cinematic"
+        case "case-experimental-template":
+            return "minimal"
+        default:
+            return nil
+        }
+    }
+
     var editablePromptFields: [String] {
         Self.editablePromptFields(in: promptInstructions)
     }

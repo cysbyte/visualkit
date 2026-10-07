@@ -667,9 +667,6 @@ struct CreateView: View {
     private var generateButton: some View {
         Button {
             isPromptFocused = false
-            activeCreationID = appState.addProcessingCreation(
-                for: viewModel.generationRequest
-            )
             viewModel.startGeneration(using: appState.jobService)
         } label: {
             HStack(spacing: 10) {

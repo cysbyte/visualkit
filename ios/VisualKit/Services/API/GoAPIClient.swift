@@ -112,7 +112,7 @@ final class GoAPIClient: BackendAPIClient, @unchecked Sendable {
         request: ImageGenerationRequest,
         idempotencyKey: UUID
     ) async throws -> JobReference {
-        guard let templateID = request.template.backendID else {
+        guard let templateID = try await backendTemplateID(for: request.template) else {
             throw APIError.invalidRequest("Templates have not loaded from the backend.")
         }
 
@@ -319,6 +319,18 @@ final class GoAPIClient: BackendAPIClient, @unchecked Sendable {
             throw APIError.generationFailed("The generation returned no creation.")
         }
         return result
+    }
+
+    private func backendTemplateID(for template: Template) async throws -> UUID? {
+        if let backendID = template.backendID {
+            return backendID
+        }
+        let templates = try await listTemplates()
+        return templates.first { candidate in
+            candidate.id == template.id
+                || candidate.id == template.backendSlugFallback
+                || candidate.name.caseInsensitiveCompare(template.name) == .orderedSame
+        }?.backendID
     }
 
     private func makeRequest(
