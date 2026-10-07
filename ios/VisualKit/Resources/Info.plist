@@ -8,7 +8,7 @@
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.visualkit.app</string>
-    <key>CFBundleName</key>
+	<key>CFBundleName</key>
 	<string>VisualKit</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
@@ -16,6 +16,8 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>APIBaseURL</key>
+	<string>https://api-visualkit.framemio.com</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>VisualKit needs permission to save generated images to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "backend/**"
+      - "ios/VisualKit/Resources/Info.plist"
       - ".github/workflows/deploy-backend-worker-ecs.yml"
   workflow_dispatch:
     inputs:
@@ -43,7 +44,11 @@ env:
   API_TASK_FAMILY: ${{ vars.API_TASK_FAMILY || 'visualkit-staging-api' }}
   WORKER_TASK_FAMILY: ${{ vars.WORKER_TASK_FAMILY || 'visualkit-staging-worker' }}
   API_DESIRED_COUNT: ${{ vars.API_DESIRED_COUNT || '1' }}
-  WORKER_DESIRED_COUNT: ${{ vars.WORKER_DESIRED_COUNT || '1' }}
+  API_MIN_CAPACITY: ${{ vars.API_MIN_CAPACITY || '1' }}
+  API_MAX_CAPACITY: ${{ vars.API_MAX_CAPACITY || '1' }}
+  WORKER_DESIRED_COUNT: ${{ vars.WORKER_DESIRED_COUNT || '0' }}
+  WORKER_MIN_CAPACITY: ${{ vars.WORKER_MIN_CAPACITY || '0' }}
+  WORKER_MAX_CAPACITY: ${{ vars.WORKER_MAX_CAPACITY || '1' }}
   API_CPU: ${{ vars.API_CPU || '512' }}
   API_MEMORY: ${{ vars.API_MEMORY || '1024' }}
   WORKER_CPU: ${{ vars.WORKER_CPU || '1024' }}
@@ -361,6 +366,20 @@ jobs:
             fi
           }
 
+          register_scalable_target() {
+            local service="$1"
+            local min_capacity="$2"
+            local max_capacity="$3"
+
+            aws application-autoscaling register-scalable-target \
+              --region "$AWS_REGION" \
+              --service-namespace ecs \
+              --scalable-dimension ecs:service:DesiredCount \
+              --resource-id "service/$ECS_CLUSTER/$service" \
+              --min-capacity "$min_capacity" \
+              --max-capacity "$max_capacity" >/dev/null
+          }
+
           api_log_group="/ecs/${PROJECT_NAME}-${ENVIRONMENT}-api"
           worker_log_group="/ecs/${PROJECT_NAME}-${ENVIRONMENT}-worker"
           ensure_log_group "$api_log_group"
@@ -374,6 +393,8 @@ jobs:
 
           deploy_service "$API_SERVICE" "$api_task_definition_arn" "$API_DESIRED_COUNT"
           deploy_service "$WORKER_SERVICE" "$worker_task_definition_arn" "$WORKER_DESIRED_COUNT"
+          register_scalable_target "$API_SERVICE" "$API_MIN_CAPACITY" "$API_MAX_CAPACITY"
+          register_scalable_target "$WORKER_SERVICE" "$WORKER_MIN_CAPACITY" "$WORKER_MAX_CAPACITY"
 
           aws ecs wait services-stable \
             --region "$AWS_REGION" \
