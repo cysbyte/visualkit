@@ -239,7 +239,7 @@ jobs:
             fi
           }
 
-          register_task_definition() {
+          register_task_definition() (
             local family="$1"
             local container_name="$2"
             local image="$3"
@@ -247,6 +247,10 @@ jobs:
             local memory="$5"
             local log_group="$6"
             local output_file="$7"
+            local task_definition_file
+            umask 077
+            task_definition_file="$(mktemp "${RUNNER_TEMP:-/tmp}/visualkit-task-definition.XXXXXXXX")"
+            trap 'rm -f "$task_definition_file"' EXIT
 
             TASK_FAMILY="$family" \
             CONTAINER_NAME="$container_name" \
@@ -329,12 +333,14 @@ jobs:
               }
 
               process.stdout.write(JSON.stringify(task));
-            ' | aws ecs register-task-definition \
+            ' > "$task_definition_file"
+
+            aws ecs register-task-definition \
               --region "$AWS_REGION" \
-              --cli-input-json file:///dev/stdin \
+              --cli-input-json "file://$task_definition_file" \
               --query 'taskDefinition.taskDefinitionArn' \
               --output text > "$output_file"
-          }
+          )
 
           deploy_service() {
             local service="$1"
