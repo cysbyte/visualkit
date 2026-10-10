@@ -54,6 +54,8 @@ struct Creation: Identifiable, Hashable, Codable, Sendable {
         case thumbnailData
         case generatedAssetID
         case thumbnailAssetID
+        case generatedImageURL
+        case thumbnailURL
         case prompt
         case template
         case visualDNA
@@ -72,7 +74,10 @@ struct Creation: Identifiable, Hashable, Codable, Sendable {
     }
 
     var hasImage: Bool {
-        generatedImage != nil || thumbnailData != nil
+        generatedImage != nil
+            || thumbnailData != nil
+            || generatedImageURL != nil
+            || thumbnailURL != nil
     }
 
     init(
@@ -160,6 +165,41 @@ struct Creation: Identifiable, Hashable, Codable, Sendable {
             status: status,
             failureMessage: failureMessage,
             generationRequest: generationRequest
+        )
+    }
+
+    func replacingTemplate(_ template: Template) -> Creation {
+        let updatedRequest: ImageGenerationRequest?
+        if let generationRequest {
+            var draft = GenerationDraft(request: generationRequest)
+            draft.selectedTemplate = template
+            updatedRequest = ImageGenerationRequest(
+                draft: draft,
+                idempotencyKey: generationRequest.idempotencyKey
+            )
+        } else {
+            updatedRequest = nil
+        }
+
+        return Creation(
+            id: id,
+            generatedImage: generatedImage,
+            thumbnailData: thumbnailData,
+            generatedAssetID: generatedAssetID,
+            thumbnailAssetID: thumbnailAssetID,
+            generatedImageURL: generatedImageURL,
+            thumbnailURL: thumbnailURL,
+            prompt: prompt,
+            template: template,
+            visualDNA: visualDNA,
+            preservation: preservation,
+            referenceImage: referenceImage,
+            settings: settings,
+            palette: palette,
+            createdAt: createdAt,
+            status: status,
+            failureMessage: failureMessage,
+            generationRequest: updatedRequest
         )
     }
 

@@ -1,0 +1,7 @@
+{
+  "model": "gpt-image-2",
+  "prompt": "Use case: stylized-concept\nAsset type: X/Twitter profile avatar\nPrimary request: Regenerate the avatar as a fictional AI builder with the face clearly visible. Keep the red-and-black bucket hat, angular reflective glasses, premium cyber/graffiti creator identity, and high-contrast social profile energy, but remove the face mask and do not cover the lower face.\nSubject: A fictional adult creator with visible natural face, clear nose, mouth, jawline, and relaxed confident expression; red-and-black techwear bucket hat; angular reflective glasses that do not fully hide the eyes; black techwear jacket with red accents.\nStyle/medium: High-end cyber editorial portrait mixed with expressive graffiti sketch, rough dry-brush marks, premium AI-native creator identity.\nComposition/framing: Tight bust portrait, centered, readable at tiny circular crop size; face fully visible and well lit; keep hat and face inside a safe circular crop.\nLighting/mood: Confident, calm, sharp, builder-focused, mysterious without hiding the face.\nColor palette: black, white, cobalt blue accents, sharp red accents.\nConstraints: fictional/non-identifiable person only; no copied likeness; no mask; no face covering; no hand covering face; no readable text; no signatures; no logos; no watermark; no platform UI.",
+  "size": "1024x1024",
+  "quality": "high",
+  "output_format": "png"
+}

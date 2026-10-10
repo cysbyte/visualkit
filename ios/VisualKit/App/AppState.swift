@@ -81,6 +81,9 @@ final class AppState: ObservableObject {
             print("[VisualKit] Remote templates loaded count=\(values.count) thumbnails=\(thumbnailCount) categories=[\(categorySummary)] first=\(values.prefix(5).map(\.id))")
             if !values.isEmpty {
                 templates = values
+                creations = enrichedCreationsWithCatalogTemplates(creations)
+                    .sorted { $0.createdAt > $1.createdAt }
+                persistCreations()
             }
         } catch {
             print("[VisualKit] Remote templates failed error=\(error)")
@@ -109,14 +112,51 @@ final class AppState: ObservableObject {
     }
 
     private func applyRemoteCreations(_ remoteCreations: [Creation]) {
+        let enrichedRemoteCreations = enrichedCreationsWithCatalogTemplates(remoteCreations)
         let localPending = creations.filter { creation in
             creation.status != .completed
-                && !remoteCreations.contains(where: { $0.id == creation.id })
+                && !enrichedRemoteCreations.contains(where: { $0.id == creation.id })
         }
-        creations = (remoteCreations + localPending)
+        creations = (enrichedRemoteCreations + localPending)
             .uniquedByID()
             .sorted { $0.createdAt > $1.createdAt }
         persistCreations()
+    }
+
+    private func enrichedCreationsWithCatalogTemplates(_ creations: [Creation]) -> [Creation] {
+        creations.map { creation in
+            guard let catalogTemplate = matchingCatalogTemplate(for: creation.template) else {
+                return creation
+            }
+            guard catalogTemplate != creation.template else {
+                return creation
+            }
+            return creation.replacingTemplate(catalogTemplate)
+        }
+    }
+
+    private func matchingCatalogTemplate(for template: Template) -> Template? {
+        let templateName = template.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return templates.first { candidate in
+            if let candidateBackendID = candidate.backendID,
+               let templateBackendID = template.backendID,
+               candidateBackendID == templateBackendID {
+                return true
+            }
+            if let candidateBackendID = candidate.backendID,
+               candidateBackendID.uuidString.caseInsensitiveCompare(template.id) == .orderedSame {
+                return true
+            }
+            if candidate.id.caseInsensitiveCompare(template.id) == .orderedSame {
+                return true
+            }
+            if let fallback = candidate.backendSlugFallback,
+               fallback.caseInsensitiveCompare(template.id) == .orderedSame {
+                return true
+            }
+            return !templateName.isEmpty
+                && candidate.name.caseInsensitiveCompare(templateName) == .orderedSame
+        }
     }
 
     func addCreation(_ creation: Creation) {

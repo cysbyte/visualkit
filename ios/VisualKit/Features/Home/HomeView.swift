@@ -15,9 +15,8 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 22) {
                 header
-                featuredTemplateSection
                 templateCategoriesSection
                 stylesSection
                 recentSection
@@ -58,26 +57,17 @@ struct HomeView: View {
                 .tracking(1.5)
                 .foregroundStyle(VisualKitTheme.coral)
 
-            Text("Start from a reusable image template.")
-                .font(.largeTitle.weight(.bold))
+            Text("Choose a template")
+                .font(.title2.weight(.bold))
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("Browse preset templates, edit the style and prompt, then generate with or without a reference image.")
-                .font(.subheadline)
+            Text("Pick a preset, adjust the prompt and style, then generate.")
+                .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
-    }
-
-    @ViewBuilder
-    private var featuredTemplateSection: some View {
-        if let template = appState.templates.first(where: { $0.featured == true }) ?? appState.templates.first {
-            FeaturedTemplateCard(template: template) {
-                openCreate(with: template)
-            }
-        }
     }
 
     private var templateCategoriesSection: some View {
@@ -209,50 +199,6 @@ struct SectionHeading: View {
                 .buttonStyle(.plain)
             }
         }
-    }
-}
-
-private struct FeaturedTemplateCard: View {
-    let template: Template
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            ZStack(alignment: .bottomLeading) {
-                TemplateArtwork(template: template)
-                    .frame(minHeight: 224)
-
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        Label(template.category.title.uppercased(), systemImage: template.thumbnail)
-                            .font(.caption.weight(.bold))
-                            .tracking(0.9)
-                            .lineLimit(1)
-                            .foregroundStyle(.white.opacity(0.8))
-                        Spacer()
-                        Image(systemName: "arrow.up.right")
-                            .font(.headline.weight(.bold))
-                            .foregroundStyle(.white)
-                    }
-
-                    VStack(alignment: .leading, spacing: 7) {
-                        Text(template.name)
-                            .font(.title2.weight(.bold))
-                            .foregroundStyle(.white)
-                            .lineLimit(2)
-                        Text(template.description)
-                            .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.76))
-                            .lineLimit(3)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .padding(20)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Use \(template.name) template")
     }
 }
 

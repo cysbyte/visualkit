@@ -1,0 +1,7 @@
+{
+  "model": "gpt-image-2",
+  "prompt": "Use case: stylized-concept\nAsset type: X/Twitter background header image\nPrimary request: Create a wide X/Twitter header image for the same fictional AI builder identity as the avatar, but do not show a large face.\nScene/backdrop: A surreal blue-and-black digital workbench where AI systems, data streams, agent workflows, code fragments, and money-making automations converge into a luminous central signal.\nSubject: Abstract AI builder workspace, code windows, node graphs, agent flow arrows, automation diagrams, analytics symbols, subtle money/business signals.\nStyle/medium: Cyber editorial banner, white halftone particle fields, red accent traces, dry-brush graffiti marks, cinematic contrast, high-end creator profile aesthetic.\nComposition/framing: 3:1 wide banner, important details centered, leave the left side relatively open for X's circular avatar overlay, avoid important detail at extreme edges.\nLighting/mood: Right place, right time; living from AI; sharing practical experiments; energetic but premium.\nColor palette: intense cobalt blue, black, white, sharp red accents.\nConstraints: no readable text, no logos, no watermark, no X UI chrome, no real-person likeness.",
+  "size": "1536x512",
+  "quality": "high",
+  "output_format": "png"
+}

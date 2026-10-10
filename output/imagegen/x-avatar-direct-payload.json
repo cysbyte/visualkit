@@ -1,0 +1,7 @@
+{
+  "model": "gpt-image-2",
+  "prompt": "Use case: stylized-concept\nAsset type: X/Twitter profile avatar\nPrimary request: Create a square profile avatar for a fictional AI builder account, inspired by the attached account's cyber creator energy but not copying any real person or exact branding.\nSubject: A mysterious adult creator, face mostly concealed by a glossy black half-mask and angular reflective glasses, wearing a red-and-black techwear bucket hat and a black jacket with red accents.\nStyle/medium: Expressive graffiti sketch mixed with high-end cyber editorial portrait; rough dry-brush strokes, crisp silhouette, premium AI-native creator identity.\nComposition/framing: Tight bust portrait, centered, readable at tiny circular crop size; keep the face and hat inside a safe circular crop.\nLighting/mood: Confident, cryptic, practical, builder-focused; strong contrast, clean dark background.\nColor palette: black, white, cobalt blue accents, sharp red accents.\nConstraints: fictional/non-identifiable person only; no copied likeness; no readable text; no signatures; no logos; no watermark; no platform UI.",
+  "size": "1024x1024",
+  "quality": "high",
+  "output_format": "png"
+}

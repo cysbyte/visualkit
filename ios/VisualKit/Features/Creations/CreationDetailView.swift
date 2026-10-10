@@ -14,7 +14,6 @@ struct CreationDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 artwork
-                titleBlock
                 actionBar
                 details
             }
@@ -119,22 +118,6 @@ struct CreationDetailView: View {
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
 
-    private var titleBlock: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(creation.prompt)
-                .font(.title2.weight(.bold))
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: 7) {
-                Label(creation.template.name, systemImage: "sparkles")
-                Text("•")
-                Text(creation.createdAt.formatted(date: .abbreviated, time: .shortened))
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-    }
-
     private var actionBar: some View {
         HStack(spacing: 10) {
             if canShare {
@@ -173,6 +156,7 @@ struct CreationDetailView: View {
     private var details: some View {
         DisclosureGroup(isExpanded: $isShowingDetails) {
             VStack(alignment: .leading, spacing: 18) {
+                TemplatePreviewTile(template: creation.template)
                 DetailRow(title: "Original prompt", value: creation.prompt)
                 DetailRow(title: "Template", value: creation.template.name)
                 DetailRow(title: "Aspect ratio", value: creation.settings.aspectRatio.rawValue)

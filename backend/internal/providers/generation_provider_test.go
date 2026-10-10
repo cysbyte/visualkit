@@ -164,6 +164,53 @@ func TestOpenAIImageGenerationProviderParsesBase64Response(t *testing.T) {
 	}
 }
 
+func TestOpenAIImageGenerationProviderUsesReferenceImageEdit(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Path != "/v1/images/edits" {
+			t.Fatalf("request path = %q, want edits", request.URL.Path)
+		}
+		if err := request.ParseMultipartForm(1024); err != nil {
+			t.Fatalf("parse multipart request: %v", err)
+		}
+		if request.FormValue("prompt") != "Make a consistent product photo" || request.FormValue("model") != "gpt-image-2" || request.FormValue("size") != "1024x1024" {
+			t.Fatalf("request fields = %#v", request.Form)
+		}
+		if request.FormValue("response_format") != "" {
+			t.Fatalf("edit request should not set response_format: %#v", request.Form)
+		}
+		files := request.MultipartForm.File["image[]"]
+		if len(files) != 1 || files[0].Header.Get("Content-Type") != "image/png" {
+			t.Fatalf("reference file = %#v", files)
+		}
+		file, err := files[0].Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer file.Close()
+		data, err := io.ReadAll(file)
+		if err != nil || string(data) != "reference-image" {
+			t.Fatalf("reference image = %q, error = %v", data, err)
+		}
+		body := `{"data":[{"b64_json":"` + base64.StdEncoding.EncodeToString([]byte("edited-image")) + `"}]}`
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})}
+	result, err := (OpenAIImageGenerationProvider{
+		Endpoint: "https://api.test/v1/images/generations", Model: "gpt-image-2", Client: client,
+	}).GenerateImage(context.Background(), GenerationInput{
+		Intent:         models.GenerationIntent{GenerationSettings: models.GenerationSettings{AspectRatio: "1:1"}},
+		ProviderPrompt: "Make a consistent product photo",
+		ReferenceImage: &ReferenceImage{
+			MimeType: "image/png", Data: []byte("reference-image"),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(result.Data) != "edited-image" {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
 func TestHTTPVisionProviderParsesStructuredResponse(t *testing.T) {
 	visualDNA := models.MockVisualDNA()
 	payload, err := json.Marshal(map[string]any{"visual_dna": visualDNA})

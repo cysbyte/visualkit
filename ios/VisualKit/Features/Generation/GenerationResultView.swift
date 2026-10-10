@@ -80,7 +80,8 @@ struct GenerationResultView: View {
     }
 
     private var generatingState: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        let request = ImageGenerationRequest(draft: viewModel.draft)
+        return VStack(alignment: .leading, spacing: 18) {
             GenerationArtworkPlaceholder(
                 colors: ["indigo", "olive", "ink"],
                 aspectRatio: viewModel.draft.settings.aspectRatio,
@@ -104,6 +105,8 @@ struct GenerationResultView: View {
             .padding(16)
             .visualkitSurface()
             .accessibilityElement(children: .combine)
+
+            configurationSection(request: request)
         }
     }
 
@@ -115,7 +118,7 @@ struct GenerationResultView: View {
             )
 
             actionGrid(result: result)
-            configurationSection(result: result)
+            configurationSection(request: result.request)
         }
     }
 
@@ -257,9 +260,9 @@ struct GenerationResultView: View {
         .buttonStyle(.plain)
     }
 
-    private func configurationSection(result: GenerationResult) -> some View {
+    private func configurationSection(request: ImageGenerationRequest) -> some View {
         DisclosureGroup(isExpanded: $isShowingConfiguration) {
-            GenerationConfigurationDetails(request: result.request)
+            GenerationConfigurationDetails(request: request)
                 .padding(.top, 10)
         } label: {
             HStack(spacing: 10) {
@@ -268,7 +271,7 @@ struct GenerationResultView: View {
                 Text("View configuration")
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                Text(result.request.template.name)
+                Text(request.template.name)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
@@ -457,6 +460,7 @@ private struct GenerationConfigurationDetails: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            TemplatePreviewTile(template: request.template)
             ConfigurationRow(title: "Original prompt", value: request.userPrompt)
             ConfigurationRow(title: "Template", value: request.template.name)
             ConfigurationRow(

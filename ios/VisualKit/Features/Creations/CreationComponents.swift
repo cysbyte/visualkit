@@ -41,7 +41,7 @@ struct CreationImageView: View {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: contentMode)
-            } else if let url = useThumbnail ? creation.thumbnailURL : creation.generatedImageURL {
+            } else if let url = imageURL {
                 RemoteImageView(
                     url: url,
                     contentMode: contentMode,
@@ -61,8 +61,17 @@ struct CreationImageView: View {
         return creation.generatedImage?.data ?? creation.thumbnailData
     }
 
+    private var imageURL: URL? {
+        if useThumbnail {
+            return creation.thumbnailURL ?? creation.generatedImageURL
+        }
+        return creation.generatedImageURL ?? creation.thumbnailURL
+    }
+
     private var assetRefreshURL: (() async throws -> URL)? {
-        let assetID = useThumbnail ? creation.thumbnailAssetID : creation.generatedAssetID
+        let assetID = useThumbnail
+            ? (creation.thumbnailAssetID ?? creation.generatedAssetID)
+            : (creation.generatedAssetID ?? creation.thumbnailAssetID)
         guard let assetID else { return nil }
         return { try await appState.backend.downloadURL(for: assetID).downloadURL }
     }
@@ -138,6 +147,69 @@ struct CreationThumbnail: View {
                 .frame(minHeight: 26)
                 .background(VisualKitTheme.coral.opacity(0.9), in: Capsule())
         }
+    }
+}
+
+struct TemplatePreviewTile: View {
+    let template: Template
+    var height: CGFloat = 96
+
+    var body: some View {
+        HStack(spacing: 12) {
+            GalleryTemplatePreviewArtwork(template: template)
+                .frame(width: height, height: height)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(template.name)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+
+                Text(template.category.title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Template, \(template.name)")
+    }
+}
+
+struct GalleryTemplatePreviewArtwork: View {
+    let template: Template
+
+    var body: some View {
+        Group {
+            if let thumbnailURL = template.thumbnailURL {
+                RemoteImageView(url: thumbnailURL)
+            } else if let previewImageName = template.previewImageName,
+                      UIImage(named: previewImageName) != nil {
+                Image(previewImageName)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                ZStack {
+                    LinearGradient(
+                        colors: [
+                            VisualKitTheme.color(for: template.accent),
+                            VisualKitTheme.deepInk
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+
+                    Image(systemName: template.thumbnail)
+                        .font(.system(size: 32, weight: .semibold))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.white.opacity(0.82))
+                }
+            }
+        }
+        .clipped()
     }
 }
 

@@ -8,7 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"strings"
 
@@ -305,20 +308,60 @@ func (provider OpenAIImageGenerationProvider) GenerateImage(
 	if model == "" {
 		model = "gpt-image-2"
 	}
-	encoded, err := json.Marshal(openAIImageGenerationRequest{
-		Model:          model,
-		Prompt:         input.ProviderPrompt,
-		Size:           imageSizeForAspectRatio(input.Intent.GenerationSettings.AspectRatio),
-		ResponseFormat: "b64_json",
-	})
-	if err != nil {
-		return GeneratedImage{}, NewProviderError("REQUEST_ENCODING_FAILED", false, err)
+	var encoded []byte
+	contentType := "application/json"
+	if input.ReferenceImage != nil {
+		extension := map[string]string{"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}[input.ReferenceImage.MimeType]
+		if len(input.ReferenceImage.Data) == 0 || extension == "" {
+			return GeneratedImage{}, ErrInvalidImage
+		}
+		if strings.HasSuffix(endpoint.Path, "/images/generations") {
+			endpoint.Path = strings.TrimSuffix(endpoint.Path, "/generations") + "/edits"
+		} else if !strings.HasSuffix(endpoint.Path, "/images/edits") {
+			return GeneratedImage{}, NewProviderError("PROVIDER_ENDPOINT_INVALID", false, fmt.Errorf("reference images require an /images/edits endpoint"))
+		}
+		var body bytes.Buffer
+		form := multipart.NewWriter(&body)
+		for key, value := range map[string]string{
+			"model": model, "prompt": input.ProviderPrompt,
+			"size":          imageSizeForAspectRatio(input.Intent.GenerationSettings.AspectRatio),
+			"output_format": "png",
+		} {
+			if err := form.WriteField(key, value); err != nil {
+				return GeneratedImage{}, NewProviderError("REQUEST_ENCODING_FAILED", false, err)
+			}
+		}
+		part, err := form.CreatePart(textproto.MIMEHeader{
+			"Content-Disposition": {mime.FormatMediaType("form-data", map[string]string{"name": "image[]", "filename": "reference" + extension})},
+			"Content-Type":        {input.ReferenceImage.MimeType},
+		})
+		if err != nil {
+			return GeneratedImage{}, NewProviderError("REQUEST_ENCODING_FAILED", false, err)
+		}
+		if _, err := part.Write(input.ReferenceImage.Data); err != nil {
+			return GeneratedImage{}, NewProviderError("REQUEST_ENCODING_FAILED", false, err)
+		}
+		if err := form.Close(); err != nil {
+			return GeneratedImage{}, NewProviderError("REQUEST_ENCODING_FAILED", false, err)
+		}
+		encoded = body.Bytes()
+		contentType = form.FormDataContentType()
+	} else {
+		var err error
+		encoded, err = json.Marshal(openAIImageGenerationRequest{
+			Model: model, Prompt: input.ProviderPrompt,
+			Size:           imageSizeForAspectRatio(input.Intent.GenerationSettings.AspectRatio),
+			ResponseFormat: "b64_json",
+		})
+		if err != nil {
+			return GeneratedImage{}, NewProviderError("REQUEST_ENCODING_FAILED", false, err)
+		}
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewReader(encoded))
 	if err != nil {
 		return GeneratedImage{}, NewProviderError("REQUEST_BUILD_FAILED", false, err)
 	}
-	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Content-Type", contentType)
 	if provider.APIKey != "" {
 		request.Header.Set("Authorization", "Bearer "+provider.APIKey)
 	}
