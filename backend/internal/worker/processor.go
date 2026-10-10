@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -277,6 +278,14 @@ func (processor ImageGenerationProcessor) Process(ctx context.Context, job *mode
 	providerRequest.VisualDNA = intent.VisualDNA
 	providerRequest.PreservationSettings = intent.Preservation
 	providerRequest.GenerationSettings = intent.GenerationSettings
+	slog.Info("image provider request prepared",
+		slog.String("job_id", job.ID.String()),
+		slog.String("template_id", intent.TemplateID.String()),
+		slog.String("aspect_ratio", intent.GenerationSettings.AspectRatio),
+		slog.Int("prompt_length", len(resolvedPrompt)),
+		slog.Bool("has_reference_image", referenceImage != nil),
+		slog.Bool("has_person_image", personImage != nil),
+	)
 	generated, err := processor.Generator.GenerateImage(providerCtx, providers.GenerationInput{
 		Request:        providerRequest,
 		Intent:         intent,

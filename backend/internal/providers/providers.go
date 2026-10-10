@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/textproto"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/visualkit/backend/internal/models"
@@ -27,9 +28,19 @@ var (
 )
 
 type ProviderError struct {
-	Code      string
-	Retryable bool
-	Err       error
+	Code              string
+	Retryable         bool
+	Err               error
+	HTTPStatus        int
+	ResponseCode      string
+	ResponseType      string
+	ResponseParam     string
+	ResponseHint      string
+	ProviderRequestID string
+	RequestModel      string
+	RequestSize       string
+	RequestMode       string
+	RequestImageCount int
 }
 
 func (err *ProviderError) Error() string {
@@ -274,7 +285,7 @@ func (provider HTTPImageGenerationProvider) GenerateImage(
 		return GeneratedImage{}, NewProviderError("PROVIDER_RESPONSE_TOO_LARGE", false, ErrProviderResponse)
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return GeneratedImage{}, providerHTTPError(response.StatusCode, body)
+		return GeneratedImage{}, providerHTTPErrorWithHeaders(response.StatusCode, body, response.Header)
 	}
 	var decoded httpGenerationResponse
 	if err := json.Unmarshal(body, &decoded); err != nil {
@@ -414,7 +425,22 @@ func (provider OpenAIImageGenerationProvider) GenerateImage(
 		return GeneratedImage{}, NewProviderError("PROVIDER_RESPONSE_TOO_LARGE", false, ErrProviderResponse)
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return GeneratedImage{}, providerHTTPError(response.StatusCode, body)
+		providerErr := providerHTTPErrorWithHeaders(response.StatusCode, body, response.Header)
+		var diagnostic *ProviderError
+		if errors.As(providerErr, &diagnostic) {
+			diagnostic.RequestModel = safeDiagnostic(model)
+			diagnostic.RequestSize = imageSizeForAspectRatio(input.Intent.GenerationSettings.AspectRatio)
+			if input.ReferenceImage != nil {
+				diagnostic.RequestMode = "edit"
+				diagnostic.RequestImageCount = 1
+				if input.PersonImage != nil {
+					diagnostic.RequestImageCount++
+				}
+			} else {
+				diagnostic.RequestMode = "generation"
+			}
+		}
+		return GeneratedImage{}, providerErr
 	}
 	var decoded openAIImageGenerationResponse
 	if err := json.Unmarshal(body, &decoded); err != nil {
@@ -483,19 +509,62 @@ func decodeImageData(encodedValue, imageURL string, client *http.Client, ctx con
 }
 
 func providerHTTPError(status int, body []byte) error {
+	return providerHTTPErrorWithHeaders(status, body, nil)
+}
+
+var safeProviderDiagnostic = regexp.MustCompile(`^[a-zA-Z0-9_.-]{1,100}$`)
+
+func safeDiagnostic(value string) string {
+	if safeProviderDiagnostic.MatchString(value) {
+		return value
+	}
+	return ""
+}
+
+func providerResponseHint(message string) string {
+	message = strings.ToLower(message)
+	for _, field := range []string{"response_format", "output_format", "image[]", "size", "model", "prompt", "image"} {
+		if strings.Contains(message, field) {
+			return field
+		}
+	}
+	return ""
+}
+
+func providerHTTPErrorWithHeaders(status int, body []byte, headers http.Header) error {
 	retryable := status == http.StatusRequestTimeout ||
 		status == http.StatusTooManyRequests ||
 		status >= http.StatusInternalServerError
-	message := fmt.Sprintf("provider returned HTTP %d", status)
+	providerErr := &ProviderError{
+		Code: fmt.Sprintf("PROVIDER_HTTP_%d", status), Retryable: retryable,
+		Err: errors.New(fmt.Sprintf("provider returned HTTP %d", status)), HTTPStatus: status,
+		ProviderRequestID: safeDiagnostic(headers.Get("x-request-id")),
+	}
 	if len(body) > 0 {
 		var payload struct {
-			Error string `json:"error"`
+			Error json.RawMessage `json:"error"`
 		}
-		if json.Unmarshal(body, &payload) == nil && payload.Error != "" {
-			message = payload.Error
+		if json.Unmarshal(body, &payload) == nil {
+			var details struct {
+				Code    string `json:"code"`
+				Type    string `json:"type"`
+				Param   string `json:"param"`
+				Message string `json:"message"`
+			}
+			if json.Unmarshal(payload.Error, &details) == nil {
+				providerErr.ResponseCode = safeDiagnostic(details.Code)
+				providerErr.ResponseType = safeDiagnostic(details.Type)
+				providerErr.ResponseParam = safeDiagnostic(details.Param)
+				providerErr.ResponseHint = providerResponseHint(details.Message)
+			} else {
+				var message string
+				if json.Unmarshal(payload.Error, &message) == nil {
+					providerErr.ResponseHint = providerResponseHint(message)
+				}
+			}
 		}
 	}
-	return NewProviderError(fmt.Sprintf("PROVIDER_HTTP_%d", status), retryable, errors.New(message))
+	return providerErr
 }
 
 func errOrDefault(err, fallback error) error {

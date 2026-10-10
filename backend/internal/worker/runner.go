@@ -9,6 +9,7 @@ import (
 
 	"github.com/visualkit/backend/internal/jobs"
 	"github.com/visualkit/backend/internal/models"
+	"github.com/visualkit/backend/internal/providers"
 	"github.com/visualkit/backend/internal/queue"
 	"github.com/visualkit/backend/internal/services"
 )
@@ -152,6 +153,22 @@ func (runner Runner) HandleMessage(ctx context.Context, message queue.ReceivedJo
 		return true
 	}
 	class := jobs.ClassifyError(err)
+	var providerError *providers.ProviderError
+	if errors.As(err, &providerError) {
+		logger.Warn("worker provider failure", append(attrs,
+			slog.String("provider_error_code", providerError.Code),
+			slog.Int("provider_http_status", providerError.HTTPStatus),
+			slog.String("provider_response_code", providerError.ResponseCode),
+			slog.String("provider_response_type", providerError.ResponseType),
+			slog.String("provider_response_param", providerError.ResponseParam),
+			slog.String("provider_response_hint", providerError.ResponseHint),
+			slog.String("provider_request_id", providerError.ProviderRequestID),
+			slog.String("request_model", providerError.RequestModel),
+			slog.String("request_size", providerError.RequestSize),
+			slog.String("request_mode", providerError.RequestMode),
+			slog.Int("request_image_count", providerError.RequestImageCount),
+			slog.Bool("retryable", providerError.Retryable))...)
+	}
 	if class == jobs.ErrorClassRetryable && job.Attempts < runner.MaxAttempts {
 		if _, err := runner.Jobs.RequeueRetry(ctx, job.ID, services.JobErrorCodeRetryable, "retryable worker error"); err != nil {
 			logger.Error("worker retry state persistence failed", append(attrs,

@@ -126,6 +126,87 @@ func TestHTTPImageGenerationProviderClassifiesHTTPFailures(t *testing.T) {
 	}
 }
 
+func TestOpenAIImageGenerationProviderCapturesSafeErrorDetails(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Body: io.NopCloser(strings.NewReader(`{"error":{"message":"private prompt: a secret logo","type":"invalid_request_error","code":"invalid_image_size","param":"size"}}`)),
+			Header: http.Header{"X-Request-Id": {"req-123"}},
+		}, nil
+	})}
+	_, err := (OpenAIImageGenerationProvider{
+		Endpoint: "https://api.test/v1/images/generations", Client: client,
+	}).GenerateImage(context.Background(), GenerationInput{ProviderPrompt: "a secret logo"})
+	var providerError *ProviderError
+	if !errors.As(err, &providerError) {
+		t.Fatalf("error = %v, want ProviderError", err)
+	}
+	if providerError.HTTPStatus != 400 || providerError.Retryable || providerError.ResponseCode != "invalid_image_size" ||
+		providerError.ResponseType != "invalid_request_error" || providerError.ResponseParam != "size" || providerError.ProviderRequestID != "req-123" ||
+		providerError.RequestModel != "gpt-image-2" || providerError.RequestSize != "1024x1024" || providerError.RequestMode != "generation" || providerError.RequestImageCount != 0 {
+		t.Fatalf("unexpected provider diagnostics: %+v", providerError)
+	}
+	if strings.Contains(providerError.Error(), "secret") || strings.Contains(providerError.Error(), "logo") {
+		t.Fatalf("private provider message leaked: %v", providerError)
+	}
+}
+
+func TestProviderHTTPErrorDoesNotExposeUntrustedFields(t *testing.T) {
+	err := providerHTTPErrorWithHeaders(400, []byte(`{"error":{"code":"secret prompt","type":"bad\nvalue","param":"prompt: private"}}`), http.Header{"X-Request-Id": {"token with spaces"}})
+	var providerError *ProviderError
+	if !errors.As(err, &providerError) {
+		t.Fatalf("error = %v, want ProviderError", err)
+	}
+	if providerError.ResponseCode != "" || providerError.ResponseType != "" || providerError.ResponseParam != "" || providerError.ProviderRequestID != "" {
+		t.Fatalf("unexpected untrusted diagnostics: %+v", providerError)
+	}
+}
+
+func TestProviderHTTPErrorClassifiesMessageWithoutLoggingIt(t *testing.T) {
+	if hint := providerResponseHint("Invalid size for gpt-image-2"); hint != "size" {
+		t.Fatalf("hint = %q, want size", hint)
+	}
+	err := providerHTTPErrorWithHeaders(400, []byte(`{"error":{"message":"Unsupported output_format for private design abc123"}}`), nil)
+	var providerError *ProviderError
+	if !errors.As(err, &providerError) || providerError.ResponseHint != "output_format" {
+		t.Fatalf("error = %#v, want output_format hint", err)
+	}
+	if strings.Contains(providerError.Error(), "private") || strings.Contains(providerError.Error(), "abc123") {
+		t.Fatalf("private provider message leaked: %v", providerError)
+	}
+
+	err = providerHTTPErrorWithHeaders(400, []byte(`{"error":"Invalid response_format for a secret prompt"}`), nil)
+	if !errors.As(err, &providerError) || providerError.ResponseHint != "response_format" {
+		t.Fatalf("error = %#v, want response_format hint", err)
+	}
+}
+
+func TestOpenAIImageGenerationProviderCapturesEditRequestMetadata(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Path != "/v1/images/edits" {
+			t.Fatalf("request path = %q, want edits", request.URL.Path)
+		}
+		return &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"Invalid image[] reference"}}`)),
+			Header:     make(http.Header),
+		}, nil
+	})}
+	_, err := (OpenAIImageGenerationProvider{
+		Endpoint: "https://api.test/v1/images/generations", Client: client,
+	}).GenerateImage(context.Background(), GenerationInput{
+		ProviderPrompt: "private design",
+		ReferenceImage: &ReferenceImage{MimeType: "image/png", Data: []byte("private reference")},
+	})
+	var providerError *ProviderError
+	if !errors.As(err, &providerError) || providerError.RequestMode != "edit" || providerError.RequestImageCount != 1 || providerError.ResponseHint != "image[]" {
+		t.Fatalf("unexpected provider diagnostics: %+v", providerError)
+	}
+	if strings.Contains(providerError.Error(), "private") {
+		t.Fatalf("private provider message leaked: %v", providerError)
+	}
+}
+
 func TestOpenAIImageGenerationProviderParsesBase64Response(t *testing.T) {
 	var received openAIImageGenerationRequest
 	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
