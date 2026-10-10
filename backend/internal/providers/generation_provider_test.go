@@ -211,6 +211,46 @@ func TestOpenAIImageGenerationProviderUsesReferenceImageEdit(t *testing.T) {
 	}
 }
 
+func TestOpenAIImageGenerationProviderSendsProductThenPerson(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Path != "/v1/images/edits" {
+			t.Fatalf("request path = %q", request.URL.Path)
+		}
+		if err := request.ParseMultipartForm(1024); err != nil {
+			t.Fatal(err)
+		}
+		files := request.MultipartForm.File["image[]"]
+		if len(files) != 2 {
+			t.Fatalf("image count = %d, want 2", len(files))
+		}
+		for index, expected := range []struct{ mimeType, data string }{{"image/png", "t-shirt"}, {"image/jpeg", "person"}} {
+			if files[index].Header.Get("Content-Type") != expected.mimeType {
+				t.Fatalf("image %d type = %q", index, files[index].Header.Get("Content-Type"))
+			}
+			file, err := files[index].Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := io.ReadAll(file)
+			file.Close()
+			if err != nil || string(data) != expected.data {
+				t.Fatalf("image %d = %q, error = %v", index, data, err)
+			}
+		}
+		body := `{"data":[{"b64_json":"` + base64.StdEncoding.EncodeToString([]byte("edited-image")) + `"}]}`
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})}
+	_, err := (OpenAIImageGenerationProvider{Endpoint: "https://api.test/v1/images/generations", Client: client}).GenerateImage(context.Background(), GenerationInput{
+		Intent:         models.GenerationIntent{GenerationSettings: models.GenerationSettings{AspectRatio: "1:1"}},
+		ProviderPrompt: "Person wearing this shirt",
+		ReferenceImage: &ReferenceImage{MimeType: "image/png", Data: []byte("t-shirt")},
+		PersonImage:    &ReferenceImage{MimeType: "image/jpeg", Data: []byte("person")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestHTTPVisionProviderParsesStructuredResponse(t *testing.T) {
 	visualDNA := models.MockVisualDNA()
 	payload, err := json.Marshal(map[string]any{"visual_dna": visualDNA})

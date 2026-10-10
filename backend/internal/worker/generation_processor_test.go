@@ -121,6 +121,55 @@ func TestImageGenerationProcessorSendsResolvedStructuredIntent(t *testing.T) {
 	}
 }
 
+func TestImageGenerationProcessorLoadsPersonImage(t *testing.T) {
+	userID, templateID, productID, personID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	jobID := uuid.New()
+	generator := &capturingGenerator{}
+	store := storage.NewMockObjectStorage()
+	for _, item := range []struct{ key, data string }{{"product-key", "t-shirt"}, {"person-key", "person"}} {
+		if err := store.PutObject(context.Background(), storage.PutObjectInput{ObjectKey: item.key, ContentType: "image/png", Data: []byte(item.data)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	processor := ImageGenerationProcessor{
+		Assets:    &twoReferenceAssets{productID: productID, productKey: "product-key", personID: personID, personKey: "person-key"},
+		Creations: &fakeCreations{},
+		Templates: fakeTemplates{template: models.Template{ID: templateID, Name: "Product set", DefaultSettings: models.GenerationSettings{AspectRatio: "1:1"}}},
+		Jobs:      newFakeJobService(models.Job{ID: jobID, UserID: userID}), Storage: store, Generator: generator,
+	}
+	job := &models.Job{ID: jobID, UserID: userID, Type: models.JobTypeImageGeneration, Input: map[string]any{
+		"prompt": "A woman wearing the t-shirt", "template_id": templateID.String(), "reference_asset_id": productID.String(), "personAssetId": personID.String(),
+	}}
+	if err := processor.Process(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	if generator.input.ReferenceImage == nil || string(generator.input.ReferenceImage.Data) != "t-shirt" ||
+		generator.input.PersonImage == nil || string(generator.input.PersonImage.Data) != "person" {
+		t.Fatalf("references: product=%#v person=%#v", generator.input.ReferenceImage, generator.input.PersonImage)
+	}
+}
+
+type twoReferenceAssets struct {
+	fakeAssets
+	productID  uuid.UUID
+	productKey string
+	personID   uuid.UUID
+	personKey  string
+}
+
+func (assets *twoReferenceAssets) Get(_ context.Context, userID, id uuid.UUID) (models.ImageAsset, error) {
+	key := ""
+	switch id {
+	case assets.productID:
+		key = assets.productKey
+	case assets.personID:
+		key = assets.personKey
+	default:
+		return models.ImageAsset{}, errors.New("unknown image asset")
+	}
+	return models.ImageAsset{ID: id, UserID: userID, ObjectKey: key, MimeType: "image/png", Status: models.ImageAssetStatusReady}, nil
+}
+
 type failingGenerator struct {
 	err error
 }

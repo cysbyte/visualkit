@@ -195,6 +195,37 @@ func (processor ImageGenerationProcessor) Process(ctx context.Context, job *mode
 			PixelHeight: referenceAsset.PixelHeight,
 		}
 	}
+	var personImage *providers.ReferenceImage
+	if rawPersonID, ok := job.Input["personAssetId"]; ok {
+		personID, err := uuid.Parse(fmt.Sprint(rawPersonID))
+		if err != nil || intent.ReferenceAssetID == nil || personID == *intent.ReferenceAssetID {
+			return providers.ErrInvalidImage
+		}
+		if processor.Storage == nil {
+			return errors.New("object storage is required for person image")
+		}
+		personAsset, err := processor.Assets.Get(ctx, job.UserID, personID)
+		if err != nil {
+			return err
+		}
+		if personAsset.Status != models.ImageAssetStatusReady {
+			return providers.ErrInvalidImage
+		}
+		object, err := processor.Storage.GetObject(ctx, personAsset.ObjectKey)
+		if err != nil {
+			return err
+		}
+		if len(object.Data) == 0 {
+			return providers.ErrInvalidImage
+		}
+		personImage = &providers.ReferenceImage{
+			AssetID:     personAsset.ID.String(),
+			MimeType:    personAsset.MimeType,
+			Data:        object.Data,
+			PixelWidth:  personAsset.PixelWidth,
+			PixelHeight: personAsset.PixelHeight,
+		}
+	}
 	cancelled, err := processor.jobCancelled(ctx, job.ID)
 	if err != nil {
 		return err
@@ -251,6 +282,7 @@ func (processor ImageGenerationProcessor) Process(ctx context.Context, job *mode
 		Intent:         intent,
 		ProviderPrompt: resolvedPrompt,
 		ReferenceImage: referenceImage,
+		PersonImage:    personImage,
 	})
 	if err != nil {
 		return failCreation(err)

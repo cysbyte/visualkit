@@ -99,6 +99,7 @@ type GenerationInput struct {
 	Intent         models.GenerationIntent
 	ProviderPrompt string
 	ReferenceImage *ReferenceImage
+	PersonImage    *ReferenceImage
 }
 
 type ReferenceImage struct {
@@ -145,6 +146,7 @@ type httpGenerationRequest struct {
 	AspectRatio    string                      `json:"aspect_ratio"`
 	Settings       models.GenerationSettings   `json:"generation_settings"`
 	ReferenceImage *httpReferenceImageInput    `json:"reference_image,omitempty"`
+	PersonImage    *httpReferenceImageInput    `json:"person_image,omitempty"`
 }
 
 type httpTemplateInput struct {
@@ -222,6 +224,18 @@ func (provider HTTPImageGenerationProvider) GenerateImage(
 			DataBase64:  base64.StdEncoding.EncodeToString(input.ReferenceImage.Data),
 			PixelWidth:  input.ReferenceImage.PixelWidth,
 			PixelHeight: input.ReferenceImage.PixelHeight,
+		}
+	}
+	if input.PersonImage != nil {
+		if input.ReferenceImage == nil || len(input.PersonImage.Data) == 0 || input.PersonImage.MimeType == "" {
+			return GeneratedImage{}, ErrInvalidImage
+		}
+		requestBody.PersonImage = &httpReferenceImageInput{
+			AssetID:     input.PersonImage.AssetID,
+			MimeType:    input.PersonImage.MimeType,
+			DataBase64:  base64.StdEncoding.EncodeToString(input.PersonImage.Data),
+			PixelWidth:  input.PersonImage.PixelWidth,
+			PixelHeight: input.PersonImage.PixelHeight,
 		}
 	}
 	encoded, err := json.Marshal(requestBody)
@@ -310,9 +324,11 @@ func (provider OpenAIImageGenerationProvider) GenerateImage(
 	}
 	var encoded []byte
 	contentType := "application/json"
+	if input.PersonImage != nil && input.ReferenceImage == nil {
+		return GeneratedImage{}, ErrInvalidImage
+	}
 	if input.ReferenceImage != nil {
-		extension := map[string]string{"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}[input.ReferenceImage.MimeType]
-		if len(input.ReferenceImage.Data) == 0 || extension == "" {
+		if len(input.ReferenceImage.Data) == 0 {
 			return GeneratedImage{}, ErrInvalidImage
 		}
 		if strings.HasSuffix(endpoint.Path, "/images/generations") {
@@ -331,15 +347,24 @@ func (provider OpenAIImageGenerationProvider) GenerateImage(
 				return GeneratedImage{}, NewProviderError("REQUEST_ENCODING_FAILED", false, err)
 			}
 		}
-		part, err := form.CreatePart(textproto.MIMEHeader{
-			"Content-Disposition": {mime.FormatMediaType("form-data", map[string]string{"name": "image[]", "filename": "reference" + extension})},
-			"Content-Type":        {input.ReferenceImage.MimeType},
-		})
-		if err != nil {
-			return GeneratedImage{}, NewProviderError("REQUEST_ENCODING_FAILED", false, err)
-		}
-		if _, err := part.Write(input.ReferenceImage.Data); err != nil {
-			return GeneratedImage{}, NewProviderError("REQUEST_ENCODING_FAILED", false, err)
+		for index, image := range []*ReferenceImage{input.ReferenceImage, input.PersonImage} {
+			if image == nil {
+				continue
+			}
+			extension := map[string]string{"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}[image.MimeType]
+			if len(image.Data) == 0 || extension == "" {
+				return GeneratedImage{}, ErrInvalidImage
+			}
+			part, err := form.CreatePart(textproto.MIMEHeader{
+				"Content-Disposition": {mime.FormatMediaType("form-data", map[string]string{"name": "image[]", "filename": fmt.Sprintf("reference-%d%s", index+1, extension)})},
+				"Content-Type":        {image.MimeType},
+			})
+			if err != nil {
+				return GeneratedImage{}, NewProviderError("REQUEST_ENCODING_FAILED", false, err)
+			}
+			if _, err := part.Write(image.Data); err != nil {
+				return GeneratedImage{}, NewProviderError("REQUEST_ENCODING_FAILED", false, err)
+			}
 		}
 		if err := form.Close(); err != nil {
 			return GeneratedImage{}, NewProviderError("REQUEST_ENCODING_FAILED", false, err)
