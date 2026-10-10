@@ -83,6 +83,18 @@ environment-specific database secret. Protect the remote Terraform state with
 encryption, IAM, and locking because it contains infrastructure-managed secret
 material.
 
+The GitHub Actions ECS deployment uses the `IMAGE_GENERATION_API_KEY` GitHub
+secret directly for the worker's `IMAGE_GENERATION_API_KEY` environment variable;
+it does not read or update the image-generation key in Secrets Manager. Set the
+GitHub secret for the deployment environment before deploying with a non-mock
+`IMAGE_GENERATION_PROVIDER`. This applies to the GitHub Actions deployment;
+Terraform-managed worker tasks still use `image_generation_api_key_secret_arn`.
+Unlike a Secrets Manager reference, an ECS task-definition environment variable
+is visible to anyone allowed to describe the task definition. Restrict
+`ecs:DescribeTaskDefinition` access accordingly and do not print task definitions
+or enable shell tracing in the deployment workflow. Redeploy after rotating the
+GitHub secret.
+
 ## Authentication requirement
 
 The production examples use `auth_mode = "bearer"`. The API's `AuthProvider`

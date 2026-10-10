@@ -69,7 +69,6 @@ env:
   WORKER_MAX_ATTEMPTS: ${{ vars.WORKER_MAX_ATTEMPTS || '3' }}
   DATABASE_URL_SECRET_ARN: ${{ vars.DATABASE_URL_SECRET_ARN }}
   VISION_API_KEY_SECRET_ARN: ${{ vars.VISION_API_KEY_SECRET_ARN }}
-  IMAGE_GENERATION_API_KEY_SECRET_ARN: ${{ vars.IMAGE_GENERATION_API_KEY_SECRET_ARN }}
   INTERNAL_JOB_TOKEN_SECRET_ARN: ${{ vars.INTERNAL_JOB_TOKEN_SECRET_ARN }}
 
 jobs:
@@ -86,6 +85,7 @@ jobs:
         env:
           ROLE_ARN: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE_ARN }}
           DATABASE_URL_FROM_GITHUB: ${{ secrets.DATABASE_URL }}
+          IMAGE_GENERATION_API_KEY_FROM_GITHUB: ${{ secrets.IMAGE_GENERATION_API_KEY }}
         run: |
           test -n "$AWS_REGION" || { echo "Missing repository variable AWS_REGION"; exit 1; }
           test -n "$AWS_ACCOUNT_ID" || { echo "Missing repository variable AWS_ACCOUNT_ID"; exit 1; }
@@ -96,6 +96,10 @@ jobs:
           test -n "$ECS_EXECUTION_ROLE_ARN" || { echo "Missing ECS_EXECUTION_ROLE_ARN"; exit 1; }
           if [ -z "$DATABASE_URL_SECRET_ARN" ] && [ -z "$DATABASE_URL_FROM_GITHUB" ]; then
             echo "Missing DATABASE_URL_SECRET_ARN repository variable or DATABASE_URL repository secret" >&2
+            exit 1
+          fi
+          if [ "$IMAGE_GENERATION_PROVIDER" != "mock" ] && [ -z "$IMAGE_GENERATION_API_KEY_FROM_GITHUB" ]; then
+            echo "Missing IMAGE_GENERATION_API_KEY GitHub secret for image generation provider" >&2
             exit 1
           fi
           case "$ENVIRONMENT" in
@@ -133,7 +137,6 @@ jobs:
         env:
           DATABASE_URL_FROM_GITHUB: ${{ secrets.DATABASE_URL }}
           VISION_API_KEY_FROM_GITHUB: ${{ secrets.VISION_API_KEY }}
-          IMAGE_GENERATION_API_KEY_FROM_GITHUB: ${{ secrets.IMAGE_GENERATION_API_KEY }}
           INTERNAL_JOB_TOKEN_FROM_GITHUB: ${{ secrets.INTERNAL_JOB_TOKEN }}
         run: |
           put_secret() {
@@ -169,11 +172,6 @@ jobs:
           if [ -z "$VISION_API_KEY_SECRET_ARN" ] && [ -n "$VISION_API_KEY_FROM_GITHUB" ]; then
             VISION_API_KEY_SECRET_ARN="$(put_secret "$PROJECT_NAME/$ENVIRONMENT/vision-api-key" "$VISION_API_KEY_FROM_GITHUB")"
             echo "VISION_API_KEY_SECRET_ARN=$VISION_API_KEY_SECRET_ARN" >> "$GITHUB_ENV"
-          fi
-
-          if [ -z "$IMAGE_GENERATION_API_KEY_SECRET_ARN" ] && [ -n "$IMAGE_GENERATION_API_KEY_FROM_GITHUB" ]; then
-            IMAGE_GENERATION_API_KEY_SECRET_ARN="$(put_secret "$PROJECT_NAME/$ENVIRONMENT/image-generation-api-key" "$IMAGE_GENERATION_API_KEY_FROM_GITHUB")"
-            echo "IMAGE_GENERATION_API_KEY_SECRET_ARN=$IMAGE_GENERATION_API_KEY_SECRET_ARN" >> "$GITHUB_ENV"
           fi
 
           if [ -z "$INTERNAL_JOB_TOKEN_SECRET_ARN" ] && [ -n "$INTERNAL_JOB_TOKEN_FROM_GITHUB" ]; then
@@ -225,6 +223,8 @@ jobs:
           docker push "$WORKER_IMAGE"
 
       - name: Deploy API and worker services
+        env:
+          IMAGE_GENERATION_API_KEY_FROM_GITHUB: ${{ secrets.IMAGE_GENERATION_API_KEY }}
         run: |
           set -euo pipefail
 
@@ -257,11 +257,9 @@ jobs:
             CONTAINER_ENTRYPOINT="${CONTAINER_ENTRYPOINT:-}" \
             DATABASE_URL_SECRET_ARN="$DATABASE_URL_SECRET_ARN" \
             VISION_API_KEY_SECRET_ARN="$VISION_API_KEY_SECRET_ARN" \
-            IMAGE_GENERATION_API_KEY_SECRET_ARN="$IMAGE_GENERATION_API_KEY_SECRET_ARN" \
+            IMAGE_GENERATION_API_KEY_FROM_GITHUB="$IMAGE_GENERATION_API_KEY_FROM_GITHUB" \
             INTERNAL_JOB_TOKEN_SECRET_ARN="$INTERNAL_JOB_TOKEN_SECRET_ARN" \
             node --input-type=module -e '
-              import { writeFileSync } from "node:fs";
-
               const env = (name, value) => value ? { name, value } : null;
               const secret = (name, valueFrom) => valueFrom ? { name, valueFrom } : null;
               const containerName = process.env.CONTAINER_NAME;
@@ -297,6 +295,9 @@ jobs:
                     env("IMAGE_GENERATION_PROVIDER", process.env.IMAGE_GENERATION_PROVIDER),
                     env("IMAGE_GENERATION_ENDPOINT", process.env.IMAGE_GENERATION_ENDPOINT),
                     env("IMAGE_GENERATION_MODEL", process.env.IMAGE_GENERATION_MODEL),
+                    containerName === "worker"
+                      ? env("IMAGE_GENERATION_API_KEY", process.env.IMAGE_GENERATION_API_KEY_FROM_GITHUB)
+                      : null,
                     env("GENERATION_CREDIT_COST", process.env.GENERATION_CREDIT_COST),
                     env("WORKER_CONCURRENCY", process.env.WORKER_CONCURRENCY),
                     env("WORKER_PROVIDER_TIMEOUT", process.env.WORKER_PROVIDER_TIMEOUT),
@@ -306,7 +307,6 @@ jobs:
                   secrets: [
                     secret("DATABASE_URL", process.env.DATABASE_URL_SECRET_ARN),
                     secret("VISION_API_KEY", process.env.VISION_API_KEY_SECRET_ARN),
-                    secret("IMAGE_GENERATION_API_KEY", process.env.IMAGE_GENERATION_API_KEY_SECRET_ARN),
                     secret("INTERNAL_JOB_TOKEN", process.env.INTERNAL_JOB_TOKEN_SECRET_ARN),
                   ].filter(Boolean),
                   logConfiguration: {
@@ -328,12 +328,10 @@ jobs:
                 task.taskRoleArn = process.env.ECS_TASK_ROLE_ARN;
               }
 
-              writeFileSync("task-definition.json", JSON.stringify(task));
-            '
-
-            aws ecs register-task-definition \
+              process.stdout.write(JSON.stringify(task));
+            ' | aws ecs register-task-definition \
               --region "$AWS_REGION" \
-              --cli-input-json file://task-definition.json \
+              --cli-input-json file:///dev/stdin \
               --query 'taskDefinition.taskDefinitionArn' \
               --output text > "$output_file"
           }
