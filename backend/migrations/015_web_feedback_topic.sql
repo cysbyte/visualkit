@@ -1,0 +1,2 @@
+ALTER TABLE web_feedback
+ADD COLUMN IF NOT EXISTS topic TEXT NOT NULL DEFAULT 'unspecified';
